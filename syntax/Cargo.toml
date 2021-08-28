@@ -1,0 +1,25 @@
+[package]
+name = "syntax"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lexer = { path = "../lexer" }
+ptree = "0.3.2"
+colored = "2.0.0"
+env_logger = "0.9.0"
+lexical = {version = "5.2.2", features = ["radix"]}
+log = "0.4"
+log-derive = "0.4"
+num-bigint = "0.4.0"
+lazy_static = "1.4.0"
+tokio = { version = "1.9.0", features = ["full"] }
+strum = "0.21"
+strum_macros = "0.21"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+hex = "0.4.3"
+pad = "0.1.6"
