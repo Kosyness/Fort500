@@ -9,7 +9,6 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display as EnumDisplay, EnumIter};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, PartialOrd, EnumDisplay)]
-// #[serde(tag = "type", content = "data")]
 pub enum Token {
     Word(Word),
     

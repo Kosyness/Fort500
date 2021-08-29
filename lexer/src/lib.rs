@@ -132,8 +132,6 @@ impl<'chars> Lexer<'chars> {
 
     #[logfn(Trace)]
     pub fn read_token(&mut self) -> LexerResult<Token> {
-        debug!("{:?}", self.input);
-
         let character = match self.input.peek() {
             Some(c) => *c,
             None => return Err(TokenError::EOF),
@@ -151,8 +149,6 @@ impl<'chars> Lexer<'chars> {
             '\'' => return self.handle_character(),
             character => panic!("Invalid Character '{}'", character),
         };
-
-        // Ok(None)
     }
 
     fn handle_e_number(&mut self, input: String) -> LexerResult<Token> {
@@ -431,7 +427,6 @@ impl<'chars> Lexer<'chars> {
 
         match token {
             Ok(token) => {
-                debug!("Returning Word: {:?}", token);
                 return Ok(Some(Token::Word(token)));
             }
             Err(e) => panic!("error: {:?}", e),
@@ -520,8 +515,6 @@ impl<'chars> Lexer<'chars> {
 
 #[cfg(test)]
 mod lexer_tests {
-    use serde::Serialize;
-
     use crate::Lexer;
 
     #[tokio::test]
