@@ -86,7 +86,7 @@ fn test_record_var_declaration() {
     
     record.add_to_tree(&mut tree);
 
-    print_tree(&tree.build());
+    print_tree(&tree.build()).unwrap();
     
     assert_eq!(record.fields.0.len(), 2);
     assert_eq!(record.vars.0.len(), 2);
@@ -94,6 +94,18 @@ fn test_record_var_declaration() {
 
 #[derive(Debug, Clone)]
 pub struct VarDeclarations(Vec<VarDeclaration>);
+
+impl Treeable for VarDeclarations { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.begin_child("VarDeclarations".blue().to_string());
+        
+        for v in &self.0 { 
+            v.add_to_tree(tree);
+        }
+
+        tree.end_child();
+    }
+}
 
 impl VarDeclarations {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
@@ -159,6 +171,20 @@ fn test_var_declarations_multiple() {
 pub enum VarDeclaration {
     Single(ID),
     Array { id: ID, dimensions: Dimensions },
+}
+
+impl Treeable for VarDeclaration { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        match self { 
+            VarDeclaration::Single(single) => {
+                single.add_to_tree(tree);
+            }
+            VarDeclaration::Array { id, dimensions} => { 
+                id.add_to_tree(tree);
+                dimensions.add_to_tree(tree);
+            }
+        }
+    }
 }
 
 impl VarDeclaration {
@@ -235,14 +261,26 @@ fn test_var_declaration_single() {
 }
 
 #[derive(Debug, Clone)]
-pub struct Dimensions(Vec<Dimention>);
+pub struct Dimensions(Vec<Dimension>);
+
+impl Treeable for Dimensions { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.begin_child(format!("{} ({})", "Dimensions".blue(), self.0.len().to_string().yellow()).bright_black().to_string());
+
+        for v in &self.0 { 
+            v.add_to_tree(tree);
+        }
+
+        tree.end_child();
+    }
+} 
 
 impl Dimensions {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut dimensions = vec![];
 
         loop {
-            let dim = Dimention::parse(cursor)?;
+            let dim = Dimension::parse(cursor)?;
             dimensions.push(dim);
 
             match cursor.peek() {
@@ -265,31 +303,46 @@ impl Dimensions {
 fn test_dimensions() {
     let mut cursor = to_cursor("1,_hello_");
 
-    let dimention = Dimensions::parse(&mut cursor).unwrap();
+    let dimension = Dimensions::parse(&mut cursor).unwrap();
 
-    assert_eq!(dimention.0.len(), 2);
+    assert_eq!(dimension.0.len(), 2);
 }
 
 #[derive(Debug, Clone)]
-pub enum Dimention {
+pub enum Dimension {
     Integer(TokenSpan),
     ID(ID),
 }
 
-impl Dimention {
+impl Treeable for Dimension { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.begin_child("Dimension".blue().to_string());
+        match self { 
+            Dimension::ID(id) => {
+                id.add_to_tree(tree);
+            }
+            Dimension::Integer(TokenSpan { token, ..}) => { 
+                tree.add_empty_child(format!("{} ({})", "Integer".green(), token.value().yellow()).bright_black().to_string());
+            }
+        }
+        tree.end_child();
+    }
+}
+
+impl Dimension {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         Ok(match cursor.next() {
             Some(TokenSpan {
                 token: Token::Integer(int),
                 span,
-            }) => Dimention::Integer(TokenSpan {
+            }) => Dimension::Integer(TokenSpan {
                 token: Token::Integer(int),
                 span,
             }),
             Some(TokenSpan {
                 token: Token::Word(Word::Identifier(id)),
                 span,
-            }) => Dimention::ID(ID(TokenSpan {
+            }) => Dimension::ID(ID(TokenSpan {
                 token: Token::Word(Word::Identifier(id)),
                 span,
             })),
@@ -313,7 +366,13 @@ pub struct Fields(Vec<Field>);
 
 impl Treeable for Fields { 
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
-        tree.begin_child(format!("{} ({})", "Fields".bright_blue(), self.0.len().to_string().yellow()).black().to_string());
+        tree.begin_child(format!("{} ({})", "Fields".bright_blue(), self.0.len().to_string().yellow()).bright_black().to_string());
+
+        for field in &self.0 { 
+            field.add_to_tree(tree);
+        }
+
+        tree.end_child();
     }
 }
 
@@ -335,6 +394,23 @@ impl Fields {
 pub enum Field {
     Record(RecordFieldDeclaration),
     Basic(BasicFieldDeclaration),
+}
+
+impl Treeable for Field { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        match self { 
+            Field::Basic(basic) => { 
+                tree.begin_child("Field::Basic".bright_blue().to_string());
+
+                basic.add_to_tree(tree);
+
+                tree.end_child();
+            },
+            Field::Record(record) => { 
+
+            }
+        };
+    }
 }
 
 impl Field {
@@ -395,31 +471,31 @@ fn to_cursor(input: &str) -> Cursor {
 }
 
 #[test]
-fn test_dimention() {
+fn test_dimension() {
     let mut cursor = to_cursor("1");
 
-    let dimention = Dimention::parse(&mut cursor).unwrap();
+    let dimension = Dimension::parse(&mut cursor).unwrap();
 
-    if let Dimention::Integer(TokenSpan { token, .. }) = dimention {
+    if let Dimension::Integer(TokenSpan { token, .. }) = dimension {
         assert_eq!(token, Token::Integer(1))
     } else {
-        panic!("Dimention is not of type Integer, {:?}", dimention);
+        panic!("Dimension is not of type Integer, {:?}", dimension);
     }
 }
 
 #[test]
-fn test_dimention_ident() {
+fn test_dimension_ident() {
     let mut cursor = to_cursor("_hello_");
 
-    let dimention = Dimention::parse(&mut cursor).unwrap();
+    let dimension = Dimension::parse(&mut cursor).unwrap();
 
-    if let Dimention::ID(ID(TokenSpan { token, .. })) = dimention {
+    if let Dimension::ID(ID(TokenSpan { token, .. })) = dimension {
         assert_eq!(
             token,
             Token::Word(Word::Identifier(Identifier("_hello_".to_string())))
         )
     } else {
-        panic!("Dimention is not of type Integer, {:?}", dimention);
+        panic!("Dimension is not of type Integer, {:?}", dimension);
     }
 }
 
@@ -427,6 +503,15 @@ fn test_dimention_ident() {
 pub struct BasicVarDeclaration {
     declaration_type: DeclarationType,
     vars: VarDeclarations,
+}
+
+impl Treeable for BasicVarDeclaration { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.begin_child("BasicVarDeclaration".bright_blue().to_string());
+        self.declaration_type.add_to_tree(tree);
+        self.vars.add_to_tree(tree);
+        tree.end_child();
+    }
 }
 
 impl BasicVarDeclaration {
@@ -457,6 +542,12 @@ fn test_basic_var_declaration() {
 
 #[derive(Debug, Clone)]
 pub struct DeclarationType(TokenSpan);
+
+impl Treeable for DeclarationType { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.add_empty_child(format!("{} ({})", "Type".green(), self.0.token.value().yellow().to_string()).bright_black().to_string());
+    }
+}
 
 impl DeclarationType {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
@@ -518,3 +609,9 @@ pub struct Subprogram;
 
 #[derive(Debug, Clone)]
 pub struct ID(TokenSpan);
+
+impl Treeable for ID { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.add_empty_child(format!("{} ({})", "Identifier".green(), self.0.token.value().to_string().yellow()).bright_black().to_string());
+    }
+}
