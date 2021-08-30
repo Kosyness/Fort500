@@ -40,10 +40,97 @@ pub struct Body {
 #[derive(Debug, Clone)]
 pub struct Declarations(Vec<Declaration>);
 
+impl Treeable for Declarations { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        tree.begin_child(format!("{} ({})", "Declarations".bright_blue(), self.0.len().to_string().yellow()).bright_black().to_string());
+
+        for declaration in &self.0 { 
+            declaration.add_to_tree(tree);
+        }
+
+        tree.end_child();
+    }
+}
+
+
+impl Declarations { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let mut declarations = vec![];
+
+        loop { 
+            match Declaration::parse(cursor)? {
+                Declaration::Empty => break,
+                declaration => declarations.push(declaration)
+            }
+        }
+
+        Ok(Self(declarations))
+    }
+}
+
+
+impl Treeable for Declaration { 
+    fn add_to_tree(&self, tree: &mut TreeBuilder) {
+        match self { 
+            Declaration::Basic(basic) => {
+                tree.begin_child("Declaration::Basic".bright_blue().to_string());
+                basic.add_to_tree(tree);
+            }
+            Declaration::Record(record) => { 
+                tree.begin_child("Declaration::Record".bright_blue().to_string());
+                record.add_to_tree(tree);
+            },
+            Self::Empty => unreachable!()
+        }
+
+        tree.end_child();
+    }
+}
+
+#[test]
+fn test_declarations() {
+    let mut cursor = to_cursor(r#"
+        record record record integer _3rd_record_, _3rd_var_, _3rd_array_(1, 2, _3rd_ident_) endrec _3rd_endrec_ endrec _2nd_endrec_ endrec _1st_endrec_
+        integer hello_world
+        character my_string(5)
+        "#);
+    
+    let declarations = Declarations::parse(&mut cursor).unwrap();
+
+    let mut tree = TreeBuilder::new("Root".yellow().to_string());
+    declarations.add_to_tree(&mut tree);
+
+    print_tree(&tree.build()).unwrap();
+}
+
 #[derive(Debug, Clone)]
 pub enum Declaration {
     Basic(BasicVarDeclaration),
     Record(RecordVarDeclaration),
+    Empty,
+}
+
+impl Declaration { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self>  
+    {
+        match cursor.peek() { 
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Record)), .. }) => Ok(Declaration::Record(RecordVarDeclaration::parse(cursor)?)),
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Data)), .. }) => todo!(),
+            _ => {
+                match DeclarationType::parse(cursor) { 
+                    Ok(type_declaration) => { 
+                        let vars = VarDeclarations::parse(cursor)?;
+
+                        Ok(Declaration::Basic(BasicVarDeclaration { 
+                            declaration_type: type_declaration,
+                            vars
+                        }))
+                    },
+                    _ => Ok(Declaration::Empty)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +158,7 @@ impl Treeable for RecordVarDeclaration {
         tree.begin_child("RecordVarDeclaration".bright_blue().to_string());
         
         self.fields.add_to_tree(tree);
+        self.vars.add_to_tree(tree);
 
         tree.end_child();
     }
@@ -97,7 +185,7 @@ pub struct VarDeclarations(Vec<VarDeclaration>);
 
 impl Treeable for VarDeclarations { 
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
-        tree.begin_child("VarDeclarations".blue().to_string());
+        tree.begin_child("VarDeclarations".bright_blue().to_string());
         
         for v in &self.0 { 
             v.add_to_tree(tree);
@@ -177,13 +265,16 @@ impl Treeable for VarDeclaration {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
         match self { 
             VarDeclaration::Single(single) => {
-                single.add_to_tree(tree);
-            }
-            VarDeclaration::Array { id, dimensions} => { 
+            tree.begin_child("VarDeclaration::1D".bright_blue().to_string());
+            single.add_to_tree(tree);
+        }
+        VarDeclaration::Array { id, dimensions} => { 
+                tree.begin_child(format!("VarDeclaration::{}D", dimensions.0.len()).bright_blue().to_string());
                 id.add_to_tree(tree);
                 dimensions.add_to_tree(tree);
             }
         }
+        tree.end_child();
     }
 }
 
@@ -265,7 +356,7 @@ pub struct Dimensions(Vec<Dimension>);
 
 impl Treeable for Dimensions { 
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
-        tree.begin_child(format!("{} ({})", "Dimensions".blue(), self.0.len().to_string().yellow()).bright_black().to_string());
+        tree.begin_child(format!("{} ({})", "Dimensions".bright_blue(), self.0.len().to_string().yellow()).bright_black().to_string());
 
         for v in &self.0 { 
             v.add_to_tree(tree);
@@ -316,7 +407,7 @@ pub enum Dimension {
 
 impl Treeable for Dimension { 
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
-        tree.begin_child("Dimension".blue().to_string());
+        tree.begin_child("Dimension".bright_blue().to_string());
         match self { 
             Dimension::ID(id) => {
                 id.add_to_tree(tree);
@@ -407,6 +498,11 @@ impl Treeable for Field {
                 tree.end_child();
             },
             Field::Record(record) => { 
+                tree.begin_child("Field::Record".bright_blue().to_string());
+
+                record.add_to_tree(tree);
+
+                tree.end_child();
 
             }
         };
