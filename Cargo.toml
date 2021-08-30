@@ -2,5 +2,6 @@
 members = [
     "lexer",
     "parser",
-    # "runtime"
+    "runtime",
+    "fort500"
 ]
