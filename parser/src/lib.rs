@@ -1,4 +1,4 @@
-mod cursor;
+pub mod cursor;
 
 use cursor::Cursor;
 use lexer::{
@@ -26,12 +26,12 @@ type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    body: Body,
-    subprograms: Vec<Subprogram>,
+    pub body: Body,
+    pub subprograms: Vec<Subprogram>,
 }
 
 impl Program {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let body = Body::parse(cursor)?;
 
         Ok(Self {
@@ -43,12 +43,12 @@ impl Program {
 
 #[derive(Debug, Clone)]
 pub struct Body {
-    declarations: Declarations,
-    statements: Statements,
+    pub declarations: Declarations,
+    pub statements: Statements,
 }
 
 impl Body {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let declarations = Declarations::parse(cursor)?;
 
         Ok(Self {
@@ -59,7 +59,7 @@ impl Body {
 }
 
 #[derive(Debug, Clone)]
-pub struct Declarations(Vec<Declaration>);
+pub struct Declarations(pub Vec<Declaration>);
 
 impl Treeable for Declarations {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
@@ -82,7 +82,7 @@ impl Treeable for Declarations {
 }
 
 impl Declarations {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut declarations = vec![];
 
         loop {
@@ -140,7 +140,7 @@ pub enum Declaration {
 }
 
 impl Declaration {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         match cursor.peek() {
             Some(TokenSpan {
                 token: Token::Word(Word::Keyword(Keyword::Record)),
@@ -167,12 +167,12 @@ impl Declaration {
 
 #[derive(Debug, Clone)]
 pub struct RecordVarDeclaration {
-    fields: Fields,
-    vars: VarDeclarations,
+    pub fields: Fields,
+    pub vars: VarDeclarations,
 }
 
 impl RecordVarDeclaration {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         cursor.expect(Token::Word(Word::Keyword(Keyword::Record)))?;
 
         let fields = Fields::parse(cursor)?;
@@ -213,7 +213,7 @@ fn test_record_var_declaration() {
 }
 
 #[derive(Debug, Clone)]
-pub struct VarDeclarations(Vec<VarDeclaration>);
+pub struct VarDeclarations(pub Vec<VarDeclaration>);
 
 impl Treeable for VarDeclarations {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
@@ -228,7 +228,7 @@ impl Treeable for VarDeclarations {
 }
 
 impl VarDeclarations {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut declarations = vec![];
 
         loop {
@@ -315,7 +315,7 @@ impl Treeable for VarDeclaration {
 }
 
 impl VarDeclaration {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let id = match cursor.next() {
             Some(TokenSpan {
                 token: Token::Word(Word::Identifier(ident)),
@@ -388,7 +388,7 @@ fn test_var_declaration_single() {
 }
 
 #[derive(Debug, Clone)]
-pub struct Dimensions(Vec<Dimension>);
+pub struct Dimensions(pub Vec<Dimension>);
 
 impl Treeable for Dimensions {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
@@ -411,7 +411,7 @@ impl Treeable for Dimensions {
 }
 
 impl Dimensions {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut dimensions = vec![];
 
         loop {
@@ -469,7 +469,7 @@ impl Treeable for Dimension {
 }
 
 impl Dimension {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         Ok(match cursor.next() {
             Some(TokenSpan {
                 token: Token::Integer(int),
@@ -524,7 +524,7 @@ impl Treeable for Fields {
 }
 
 impl Fields {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut fields = vec![];
 
         while let Ok(field) = Field::parse(cursor) {
@@ -565,7 +565,7 @@ impl Treeable for Field {
 }
 
 impl Field {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         match cursor.peek() {
             Some(TokenSpan {
                 token: Token::Word(Word::Keyword(Keyword::Record)),
@@ -650,8 +650,8 @@ fn test_dimension_ident() {
 
 #[derive(Debug, Clone)]
 pub struct BasicVarDeclaration {
-    declaration_type: DeclarationType,
-    vars: VarDeclarations,
+    pub declaration_type: DeclarationType,
+    pub vars: VarDeclarations,
 }
 
 impl Treeable for BasicVarDeclaration {
@@ -664,7 +664,7 @@ impl Treeable for BasicVarDeclaration {
 }
 
 impl BasicVarDeclaration {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let type_ = DeclarationType::parse(cursor)?;
         let vars = VarDeclarations::parse(cursor)?;
 
@@ -690,7 +690,7 @@ fn test_basic_var_declaration() {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeclarationType(TokenSpan);
+pub struct DeclarationType(pub TokenSpan);
 
 impl Treeable for DeclarationType {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
@@ -707,7 +707,7 @@ impl Treeable for DeclarationType {
 }
 
 impl DeclarationType {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+    pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         match cursor.peek() {
             Some(TokenSpan {
                 token: Token::Word(Word::Keyword(Keyword::Integer)),
