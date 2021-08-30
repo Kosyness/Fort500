@@ -499,6 +499,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "parser"
+version = "0.1.0"
+dependencies = [
+ "colored",
+ "env_logger",
+ "hex",
+ "lazy_static 1.4.0",
+ "lexer",
+ "lexical",
+ "log",
+ "log-derive",
+ "num-bigint",
+ "pad",
+ "ptree",
+ "regex",
+ "serde 1.0.127",
+ "serde_json",
+ "strum",
+ "strum_macros",
+ "tokio",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -583,14 +606,6 @@ name = "regex-syntax"
 version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
-
-[[package]]
-name = "runtime"
-version = "0.1.0"
-dependencies = [
- "lexer",
- "syntax",
-]
 
 [[package]]
 name = "rust-ini"
@@ -733,29 +748,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
-]
-
-[[package]]
-name = "syntax"
-version = "0.1.0"
-dependencies = [
- "colored",
- "env_logger",
- "hex",
- "lazy_static 1.4.0",
- "lexer",
- "lexical",
- "log",
- "log-derive",
- "num-bigint",
- "pad",
- "ptree",
- "regex",
- "serde 1.0.127",
- "serde_json",
- "strum",
- "strum_macros",
- "tokio",
 ]
 
 [[package]]
