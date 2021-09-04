@@ -33,6 +33,8 @@ pub enum Token {
     Float(f64),
     Integer(i64),
     Boolean(bool),
+
+    String(String),
 }
 
 impl Token {
@@ -59,6 +61,7 @@ impl Token {
             Self::Comma => ','.to_string(),
             Self::LParen => '('.to_string(),
             Self::RParen => ')'.to_string(),
+            Self::String(s) => s.to_string()
         }
     }
 }

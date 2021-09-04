@@ -145,10 +145,39 @@ impl<'chars> Lexer<'chars> {
             '$' => return self.handle_comment(),
             '0' => return self.handle_radix_number(),
             '1'..='9' => return self.handle_number(),
+            '"' => return self.handle_string(),
             c if c.is_ident_start() => return self.handle_ident_or_keyword(),
             '\'' => return self.handle_character(),
             character => panic!("Invalid Character '{}'", character),
         };
+    }
+
+    fn handle_string(&mut self) -> LexerResult<Token> { 
+        self.input.next();
+        let mut escaped = false;
+        let s = self.read_until_fn(|c| { 
+            match c { 
+                '"' if !escaped => {
+                    false
+                }
+                _ if !escaped => { 
+                    true
+                }
+                c if escaped => { 
+                    escaped = false;
+                    todo!("handle escaped character \\{}", c);
+                }
+                '\\' => {
+                    escaped = true;
+                    todo!("handle backslash");
+                    true
+                },
+                _ => unreachable!()
+            }
+        });
+        
+        self.input.next();
+        Ok(Some(Token::String(s)))
     }
 
     fn handle_e_number(&mut self, input: String) -> LexerResult<Token> {
@@ -521,10 +550,7 @@ mod lexer_tests {
     async fn lexer() {
         env_logger::init();
         let input = r#"
-goto 1000
-10E+2
-
-goto 1000
+"hello world"
 "#
         .to_string();
         let iterator = input.chars();
