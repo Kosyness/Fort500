@@ -362,6 +362,18 @@ impl Word {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Identifier(pub String);
 
+impl From<String> for Identifier { 
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for Identifier { 
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
 /// # Keywords
 ///
 /// Just the keywords of the language
