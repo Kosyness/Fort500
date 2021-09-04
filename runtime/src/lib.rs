@@ -98,7 +98,10 @@ impl Runtime {
     #[logfn_inputs(Trace)]
     fn handle_write_item(&mut self, item: &WriteItem) { 
         match item { 
-            WriteItem::String(string) => println!("{}", string),
+            WriteItem::String(string) => {
+                trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
+                
+                println!("{}", string)},
             c => todo!("Add suppot for {:?}", c)
         }
     }
