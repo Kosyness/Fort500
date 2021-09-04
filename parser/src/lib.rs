@@ -765,7 +765,7 @@ pub enum Statement {}
 pub struct Subprogram;
 
 #[derive(Debug, Clone)]
-pub struct ID(TokenSpan);
+pub struct ID(pub TokenSpan);
 
 impl Treeable for ID {
     fn add_to_tree(&self, tree: &mut TreeBuilder) {
