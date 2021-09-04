@@ -1,7 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-    sync::{Arc, Mutex},
+    collections::{BTreeMap},
 };
 
 use lexer::{
@@ -9,11 +7,10 @@ use lexer::{
     TokenSpan,
 };
 use parser::{
-    BasicVarDeclaration, Declaration, DeclarationType, Declarations, VarDeclaration,
-    VarDeclarations, ID,
+    BasicVarDeclaration, Declaration, DeclarationType, Declarations, VarDeclaration, ID,
 };
 
-use log::{debug, info, trace};
+use log::{trace};
 
 use crate::variable::{Value, Variable};
 
@@ -35,7 +32,7 @@ impl ScopeManager {
 
     pub fn declarations(&mut self, declarations: &Declarations) {
         for declaration in &declarations.0 {
-            self.declaration(&declaration);
+            self.declaration(declaration);
         }
     }
 

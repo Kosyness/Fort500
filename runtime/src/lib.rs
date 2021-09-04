@@ -1,11 +1,11 @@
-use std::{collections::{BTreeMap, HashMap}, fmt::Debug};
+use std::{fmt::Debug};
 
 use errors::Error;
-use lexer::token::{Identifier, Keyword, Token, Word};
-use parser::{BasicVarDeclaration, Body, Declaration, DeclarationType, Declarations, Dimension, Dimensions, IoStatement, LabeledStatement, Program, Statement, StatementList, VarDeclaration, WriteItem, WriteList};
 
-use log::{ trace, debug, info, error, warn, };
-use log_derive::{logfn, logfn_inputs};
+use parser::{Body, Declarations, IoStatement, LabeledStatement, Program, Statement, StatementList, WriteItem, WriteList};
+
+use log::{ trace, info, };
+use log_derive::{logfn_inputs};
 
 
 use colored::*;
@@ -115,8 +115,8 @@ fn to_cursor(input: &str) -> Cursor {
     let mut lexer = Lexer::new(input.chars().peekable());
     let lex = lexer.lex().unwrap();
 
-    let cursor = Cursor::new(lex);
-    cursor
+    
+    Cursor::new(lex)
 }
 
 #[test]
