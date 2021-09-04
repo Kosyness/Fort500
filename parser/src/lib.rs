@@ -805,8 +805,8 @@ impl StatementList {
 
 #[derive(Debug, Clone)]
 pub struct LabeledStatement {
-    label: Option<TokenSpan>,
-    statement: Statement
+    pub label: Option<TokenSpan>,
+    pub statement: Statement
 }
 
 impl LabeledStatement { 
@@ -865,7 +865,7 @@ impl Statement {
             Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), .. }) => { 
                 Ok(Statement::Io(IoStatement::parse(cursor)?))
             }
-            Some(t) => todo!("Add support for SimpleStatement with {:?}", t.token),
+            Some(t) => todo!("Add support for Statement with {:?}", t.token),
             _ => todo!("Add error handling")
         }
     }
@@ -892,7 +892,7 @@ impl IoStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct WriteList(Vec<WriteItem>);
+pub struct WriteList(pub Vec<WriteItem>);
 
 impl WriteList { 
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 

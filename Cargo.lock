@@ -171,6 +171,11 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 [[package]]
 name = "fort500"
 version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "read_input",
+ "runtime",
+]
 
 [[package]]
 name = "getrandom"
@@ -574,6 +579,12 @@ checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "read_input"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f178674da3d005db760b30d6735a989d692da37b86337daec6f2e311223d608"
 
 [[package]]
 name = "redox_syscall"

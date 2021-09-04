@@ -2,6 +2,8 @@ use lexer::{TokenSpan, token::{Identifier, Token, Word}};
 
 use crate::{ParseError, ParseResult};
 
+
+#[derive(Debug, Clone)]
 pub struct Cursor {
     tokens: Vec<TokenSpan>,
     current_token: usize,
