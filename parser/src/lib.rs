@@ -1,5 +1,7 @@
 pub mod cursor;
 
+use std::fmt::Write;
+
 use cursor::Cursor;
 use lexer::{
     token::{Identifier, Word},
@@ -44,18 +46,29 @@ impl Program {
 #[derive(Debug, Clone)]
 pub struct Body {
     pub declarations: Declarations,
-    pub statements: Statements,
+    pub statements: StatementList,
 }
 
 impl Body {
     pub fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let declarations = Declarations::parse(cursor)?;
+        let statements = StatementList::parse(cursor)?;
 
         Ok(Self {
             declarations,
-            statements: Statements(vec![]),
+            statements,
         })
     }
+}
+
+#[test]
+fn body_test() { 
+    let mut cursor = to_cursor(r#"   integer hello 
+                          write "hello""#);
+
+    let program = Program::parse(&mut cursor).unwrap();
+
+    println!("{:?}", program);
 }
 
 #[derive(Debug, Clone)]
@@ -756,12 +769,6 @@ fn test_declaration_type() {
 }
 
 #[derive(Debug, Clone)]
-pub struct Statements(Vec<Statement>);
-
-#[derive(Debug, Clone)]
-pub enum Statement {}
-
-#[derive(Debug, Clone)]
 pub struct Subprogram;
 
 #[derive(Debug, Clone)]
@@ -778,5 +785,167 @@ impl Treeable for ID {
             .bright_black()
             .to_string(),
         );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StatementList(pub Vec<LabeledStatement>);
+
+impl StatementList { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let mut statements=  vec![];
+
+        while let Ok(statement) = LabeledStatement::parse(cursor) { 
+            statements.push(statement);
+        }
+
+        Ok(StatementList(statements))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LabeledStatement {
+    label: Option<TokenSpan>,
+    statement: Statement
+}
+
+impl LabeledStatement { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        match cursor.peek() { 
+            Some(TokenSpan { token: Token::Integer(iconst), span }) => { 
+                cursor.next();
+                Ok(LabeledStatement { 
+                                    label: Some(TokenSpan { token: Token::Integer(iconst), span }),
+                                    statement: Statement::parse(cursor)?
+                                })
+            },
+            Some(_) => {
+                Ok(LabeledStatement { 
+                                    label: None,
+                                    statement: Statement::parse(cursor)?
+                                })
+            },
+            _ => Err(ParseError::EOF)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement { 
+    Goto(),
+    /// # If Statement
+    ///
+    /// Since the if statment had two definitions:
+    /// - if_statement -> it did not include THEN
+    ///     - IF LPAREN expression RPAREN label COMMA label COMMA label
+    ///     - IF LPAREN expression RPAREN simple_statement
+    ///- branch_statement -> IF LPAREN expression RPAREN THEN body tail
+    ///
+    /// The branch_statement and if_statement were so close, that it was decided to actually
+    /// Merge them into one, and to add some extra functionality, and to not go to the hussle of 
+    /// having to seek through too many tokens in order to determine which one it actually isbecause
+    /// the beginning of both statements are identical
+    ///
+    /// Result:
+    ///
+    /// if_statement -> IF LPAREN expression RPAREN THEN body tail
+    If(),
+    Loop(),
+    SubroutineCall(),
+    Io(IoStatement),
+    Continue(TokenSpan),
+    Return(TokenSpan),
+    Stop(TokenSpan),
+}
+
+impl Statement { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        match cursor.peek() {
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), .. }) |  
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), .. }) => { 
+                Ok(Statement::Io(IoStatement::parse(cursor)?))
+            }
+            Some(t) => todo!("Add support for SimpleStatement with {:?}", t.token),
+            _ => todo!("Add error handling")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum IoStatement { 
+    Read(),
+    Write(WriteList),
+}
+
+impl IoStatement { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        match cursor.next() {
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), span }) => { 
+                Ok(IoStatement::Write(WriteList::parse(cursor)?))
+            },
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), span }) => { 
+                todo!("Add support for IoStatement -> READ read_list")
+            },
+            _ => todo!("Add proper error support")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WriteList(Vec<WriteItem>);
+
+impl WriteList { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let mut list = vec![];
+
+        loop { 
+            let item = WriteItem::parse(cursor)?;
+
+            list.push(item);
+
+            match cursor.peek() { 
+                Some(TokenSpan { token: Token::Comma, .. }) => {
+                    cursor.next();
+                    continue;
+                }
+                _ => break
+            }
+        }
+
+        Ok(WriteList(list))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum WriteItem { 
+    Expression(),
+    /// Uhh.., not sure for what to name this 
+    ///
+    ///  LPAREN write_list COMMA ID ASSIGN iter_space RPAREN
+    Uhhh(),
+
+    String(String),
+}
+
+impl WriteItem { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        match cursor.next() { 
+            Some(TokenSpan { token: Token::String(string), span }) => { 
+                Ok(Self::String(string))
+            },
+            Some(TokenSpan { token: Token::LParen, span }) => { 
+                todo!("Add support for WriteItem -> LPAREN write_list COMMA ID ASSIGN iter_space RPAREN");
+            },
+            Some(TokenSpan { token, span}) => { 
+                todo!("Add support for WriteItem -> expression")
+            },
+            next => Err(ParseError::Expected(
+                "Expected either an expression, a string or left parenthesis".to_string(),
+                vec![
+
+                ],
+                next
+            ))
+        }
     }
 }
