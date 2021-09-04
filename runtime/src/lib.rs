@@ -1,65 +1,56 @@
 use std::collections::{BTreeMap, HashMap};
 
+use errors::Error;
 use lexer::token::{Identifier, Keyword, Token, Word};
-use parser::{BasicVarDeclaration, Declaration, DeclarationType, Program, VarDeclaration};
+use parser::{BasicVarDeclaration, Body, Declaration, DeclarationType, Declarations, Dimension, Dimensions, Program, VarDeclaration};
 
 use log::{ trace, debug, info, error, warn, };
 
+use colored::*;
+
 use lexer::Lexer;
 use parser::cursor::Cursor;
+use scope::{ScopeManager};
 
+pub type EvalResult<T> = Result<T, Error>;
+
+pub mod scope;
+pub mod errors;
+pub mod variable;
 pub struct Runtime {
-    program: Program,
-
-    global: Global,
+    global: ScopeManager,
 }
 
 
 impl Runtime { 
-    fn new(program: Program) -> Self { 
+    fn new() -> Self { 
         Self { 
-            program,
-            global: Default::default(),
+            global: ScopeManager::new(),
         }
     }
 
-    fn run(&mut self) { 
-        let declarations = self.program.body.declarations.clone();
+    fn eval_string(&mut self, input: String) { 
+        let mut lexer = Lexer::new(input.chars().peekable());
 
-        for declaration in declarations.0 { 
-            match declaration { 
-                Declaration::Basic(BasicVarDeclaration { declaration_type, vars}) => for var in &vars.0 { 
-                    self.add_global_variable(&declaration_type, var);
-                }
-                _ => todo!()
-            }
-        }
+        let tokens = lexer.lex().expect("Failed to evaluate a string");
+
+        let mut cursor = Cursor::new(tokens);
+        let program = Program::parse(&mut cursor).expect("Failed to parse program from input");
+
+        self.eval_program(program);
     }
 
-    fn add_global_variable(&mut self, variable_type: &DeclarationType, variable: &VarDeclaration) { 
-        trace!("Adding global variable {:?} of type {:?}", variable, variable_type);
-        match variable_type.0.token { 
-            Token::Word(Word::Keyword(Keyword::Integer)) => { 
-            },
-            _ => todo!("Currently only supporting integers")
-        }
+    fn eval_program(&mut self, program: Program) {
+        self.handle_body(&program.body);
     }
 
-    fn add_global_variable_single(&mut self, variable_type: &DeclarationType, variable: &VarDeclaration) {
-        
+    fn handle_body(&mut self, body: &Body) { 
+        self.handle_declarations(&body.declarations);
     }
-}
 
-pub type Global = HashMap<String, Variable>;
-
-pub enum Variable {
-    Integer(IntVariable),
-}
-
-pub struct IntVariable { 
-    identifier: Identifier,
-
-    value: i64,
+    fn handle_declarations(&mut self, declarations: &Declarations) { 
+        self.global.declarations(declarations);
+    }
 }
 
 #[cfg(test)]
@@ -75,12 +66,15 @@ fn to_cursor(input: &str) -> Cursor {
 #[test]
 fn basic_program() { 
     let _ = env_logger::try_init();
-    warn!("Hello");
-    let mut cursor = to_cursor("integer x, y, z");
+    let program = "integer x, y, z";
+    warn!("Running program {}", program.to_string().blue());
+    let mut cursor = to_cursor(program);
 
     let program = Program::parse(&mut cursor).unwrap();
 
-    let mut runtime = Runtime::new(program);
+    let mut runtime = Runtime::new();
 
-    runtime.run();
+    runtime.eval_program(program);
+
+    runtime.global.get("x".into());
 }
