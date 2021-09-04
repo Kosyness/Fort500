@@ -35,7 +35,7 @@ impl Cursor {
     }
 
     pub fn expect_fn<F: Fn(Token) -> bool>(&mut self, expect: F) -> ParseResult<TokenSpan> {
-        if let Some(TokenSpan { token, span }) = self.peek() {
+        if let Some(TokenSpan { token, span: _ }) = self.peek() {
             if expect(token.clone()) {
                 Ok(self.next().unwrap())
             } else {
@@ -55,7 +55,7 @@ impl Cursor {
     }
 
     pub fn expect(&mut self, expect: Token) -> ParseResult<TokenSpan> {
-        if let Some(TokenSpan { token, span }) = self.peek() {
+        if let Some(TokenSpan { token, span: _ }) = self.peek() {
             if expect == token {
                 Ok(self.next().unwrap())
             } else {

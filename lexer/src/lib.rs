@@ -1,15 +1,15 @@
-use core::{num, panic};
+use core::{panic};
 
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
-    iter::{Enumerate, Peekable},
+    iter::{Peekable},
     str::Chars,
 };
 
-use log_derive::{logfn, logfn_inputs};
+use log_derive::{logfn};
 
-use log::{debug, info, trace, warn};
+use log::{debug, trace};
 use token::{BinOp, Token, Word};
 
 use crate::token::AssignOp;

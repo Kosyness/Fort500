@@ -1,6 +1,6 @@
 pub mod cursor;
 
-use std::fmt::Write;
+
 
 use cursor::Cursor;
 use lexer::{
@@ -11,7 +11,7 @@ use lexer::{
 
 use colored::*;
 
-use ptree::{print_tree, TreeBuilder};
+use ptree::{TreeBuilder};
 
 trait Treeable {
     fn add_to_tree(&self, tree: &mut TreeBuilder);
@@ -880,10 +880,10 @@ pub enum IoStatement {
 impl IoStatement { 
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
         match cursor.next() {
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), span }) => { 
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), span: _ }) => { 
                 Ok(IoStatement::Write(WriteList::parse(cursor)?))
             },
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), span }) => { 
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), span: _ }) => { 
                 todo!("Add support for IoStatement -> READ read_list")
             },
             _ => todo!("Add proper error support")
@@ -930,13 +930,13 @@ pub enum WriteItem {
 impl WriteItem { 
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
         match cursor.next() { 
-            Some(TokenSpan { token: Token::String(string), span }) => { 
+            Some(TokenSpan { token: Token::String(string), span: _ }) => { 
                 Ok(Self::String(string))
             },
-            Some(TokenSpan { token: Token::LParen, span }) => { 
+            Some(TokenSpan { token: Token::LParen, span: _ }) => { 
                 todo!("Add support for WriteItem -> LPAREN write_list COMMA ID ASSIGN iter_space RPAREN");
             },
-            Some(TokenSpan { token, span}) => { 
+            Some(TokenSpan { token: _, span: _}) => { 
                 todo!("Add support for WriteItem -> expression")
             },
             next => Err(ParseError::Expected(
