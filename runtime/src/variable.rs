@@ -1,4 +1,4 @@
-use parser::Body;
+
 
 use crate::{EvalResult, errors::Error};
 
@@ -34,7 +34,7 @@ pub struct StringValue(pub String);
 
 impl Truthy for StringValue{ 
     fn truthy(&self) -> bool {
-        self.0.len() > 0 
+        !self.0.is_empty() 
     }
 }
 

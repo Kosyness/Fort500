@@ -12,7 +12,7 @@ use parser::{
 
 use log::{trace};
 
-use crate::variable::{Value, Variable};
+use crate::{errors::Error, variable::{Value, Variable}};
 
 use colored::*;
 
@@ -42,7 +42,7 @@ impl ScopeManager {
         }
     }
 
-    pub fn get(&mut self, identifier: Identifier) -> Option<Variable> {
+    pub fn get(&mut self, identifier: Identifier) -> Result<Variable, Error> {
         for scope in self.scopes.iter().rev() {
             match scope.get(&identifier.0) {
                 Some(var) => {
@@ -53,18 +53,35 @@ impl ScopeManager {
                         identifier.0.magenta().bold(),
                         var
                     );
-                    return Some(var);
+                    return Ok(var);
                 }
                 None => continue,
             }
         }
 
-        None
+        Err(Error::ReferenceError(format!("{} variable is not defined", identifier.0)))
     }
 
-    pub fn set(&mut self, identifier: Identifier, var: Variable) {
+    pub(crate) fn set_unchecked(&mut self, identifier: Identifier, var: Variable) { 
         let length = self.scopes.len();
         self.scopes[length - 1].insert(identifier.0, var);
+    }
+
+    pub fn set(&mut self, identifier: Identifier, var: Variable) -> Result<(), Error> {
+        for scope in self.scopes.iter_mut().rev() {
+            match scope.get(&identifier.0) {
+                Some(_) => {
+                    // Todo
+                    // 
+                    // Add Type Checking to see if the variable actually accepts that value
+                    scope.insert(identifier.0, var);
+                    return Ok(())
+                }
+                None => continue,
+            }
+        }
+
+        Err(Error::VariableAssignmentError("Tried to assign a variable which was not declared".into()))
     }
 
     pub fn set_global(&mut self, identifier: Identifier, var: Variable) {
@@ -76,6 +93,7 @@ impl ScopeManager {
             self.add_variable(&variables.declaration_type, variable.clone());
         }
     }
+
 
     pub(crate) fn add_variable(&mut self, var_type: &DeclarationType, variable: VarDeclaration) {
         match variable {
@@ -90,7 +108,7 @@ impl ScopeManager {
                 );
                 match var_type.0.token {
                     Token::Word(Word::Keyword(Keyword::Integer)) => {
-                        self.set(id, Variable::Value(Value::Integer(0)));
+                        self.set_unchecked(id, Variable::Value(Value::Integer(0)));
                     }
                     _ => todo!(),
                 }

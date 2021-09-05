@@ -1,13 +1,13 @@
 pub mod cursor;
 
-use serde:: { Serialize, Deserialize };
+use serde::{Deserialize, Serialize};
 
 use cursor::Cursor;
-use lexer::{TokenSpan, token::{BinOp, Identifier, Word}, token::{Keyword, Token}};
+use lexer::{TokenSpan, token::{AssignOp, BinOp, Identifier, Word}, token::{Keyword, Token}};
 
 use colored::*;
 
-use ptree::{TreeBuilder, print_tree};
+use ptree::{print_tree, TreeBuilder};
 
 trait Treeable {
     fn add_to_tree(&self, tree: &mut TreeBuilder);
@@ -59,11 +59,13 @@ impl Body {
 }
 
 #[test]
-fn body_test() { 
-    let mut cursor = to_cursor(r#"   
+fn body_test() {
+    let mut cursor = to_cursor(
+        r#"   
                                 integer hello 
                                 write "hello"
-                           "#);
+                           "#,
+    );
 
     let program = Program::parse(&mut cursor).unwrap();
 
@@ -790,11 +792,11 @@ impl Treeable for ID {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StatementList(pub Vec<LabeledStatement>);
 
-impl StatementList { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
-        let mut statements=  vec![];
+impl StatementList {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        let mut statements = vec![];
 
-        while let Ok(statement) = LabeledStatement::parse(cursor) { 
+        while let Ok(statement) = LabeledStatement::parse(cursor) {
             statements.push(statement);
         }
 
@@ -805,32 +807,37 @@ impl StatementList {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LabeledStatement {
     pub label: Option<TokenSpan>,
-    pub statement: Statement
+    pub statement: Statement,
 }
 
-impl LabeledStatement { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
-        match cursor.peek() { 
-            Some(TokenSpan { token: Token::Integer(iconst), span }) => { 
+impl LabeledStatement {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        match cursor.peek() {
+            Some(TokenSpan {
+                token: Token::Integer(iconst),
+                span,
+            }) => {
                 cursor.next();
-                Ok(LabeledStatement { 
-                                    label: Some(TokenSpan { token: Token::Integer(iconst), span }),
-                                    statement: Statement::parse(cursor)?
-                                })
-            },
-            Some(_) => {
-                Ok(LabeledStatement { 
-                                    label: None,
-                                    statement: Statement::parse(cursor)?
-                                })
-            },
-            _ => Err(ParseError::EOF)
+                Ok(LabeledStatement {
+                    label: Some(TokenSpan {
+                        token: Token::Integer(iconst),
+                        span,
+                    }),
+                    statement: Statement::parse(cursor)?,
+                })
+            }
+            Some(_) => Ok(LabeledStatement {
+                label: None,
+                statement: Statement::parse(cursor)?,
+            }),
+            _ => Err(ParseError::EOF),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum Statement { 
+pub enum Statement {
+    Assignment(Assignment),
     Goto(),
     /// # If Statement
     ///
@@ -844,58 +851,93 @@ pub enum Statement {
     Stop(TokenSpan),
 }
 
-impl Statement { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+impl Statement {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         match cursor.peek() {
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), .. }) |  
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), .. }) => { 
-                Ok(Statement::Io(IoStatement::parse(cursor)?))
-            }
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::If)), .. }) => { 
-                Ok(Statement::If(IfStatement::parse(cursor)?))
-            }
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Endif)), .. }) => { 
-                Err(ParseError::EndIf)
-            }
+            Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Write)),
+                ..
+            })
+            | Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Read)),
+                ..
+            }) => Ok(Statement::Io(IoStatement::parse(cursor)?)),
+            Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::If)),
+                ..
+            }) => Ok(Statement::If(IfStatement::parse(cursor)?)),
+            Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Endif)),
+                ..
+            }) => Err(ParseError::EndIf),
+            _ if cursor.check_if(1, Token::AssignOp(AssignOp::Assign)) => Ok(Statement::Assignment(Assignment::parse(cursor)?)),
             Some(t) => todo!("Add support for Statement with {:?}", t.token),
-            _ => todo!("Add error handling")
+            _ => todo!("Add error handling"),
         }
     }
 }
 
+#[test]
+fn test_assignments_in_statements() { 
+    let _ = env_logger::try_init();
+    let mut cursor = to_cursor("hello = 1");
+
+    let statement = Statement::parse(&mut cursor).unwrap();
+
+    println!("{}", serde_json::to_string_pretty(&statement).unwrap());
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum Constant { 
+pub enum Constant {
     Integer(TokenSpan),
     Real(TokenSpan),
     Character(TokenSpan),
     Boolean(TokenSpan),
 }
 
-impl Constant { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
-        Ok(match cursor.next() { 
-            Some(TokenSpan { token: Token::Integer(int), span }) => { 
-                Constant::Integer(TokenSpan { token: Token::Integer(int), span })
+impl Constant {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        Ok(match cursor.next() {
+            Some(TokenSpan {
+                token: Token::Integer(int),
+                span,
+            }) => Constant::Integer(TokenSpan {
+                token: Token::Integer(int),
+                span,
+            }),
+            Some(TokenSpan {
+                token: Token::Float(f),
+                span,
+            }) => Constant::Integer(TokenSpan {
+                token: Token::Float(f),
+                span,
+            }),
+            Some(TokenSpan {
+                token: Token::Char(c),
+                span,
+            }) => Constant::Character(TokenSpan {
+                token: Token::Char(c),
+                span,
+            }),
+            Some(TokenSpan {
+                token: Token::Boolean(b),
+                span,
+            }) => Constant::Boolean(TokenSpan {
+                token: Token::Boolean(b),
+                span,
+            }),
+            c => {
+                return Err(ParseError::Expected(
+                    "Expected a character, boolean, float or integer".to_string(),
+                    vec![
+                        Token::Boolean(true),
+                        Token::Integer(0),
+                        Token::Float(0f64),
+                        Token::Char("".to_string()),
+                    ],
+                    c,
+                ))
             }
-            Some(TokenSpan { token: Token::Float(f), span }) => { 
-                Constant::Integer(TokenSpan { token: Token::Float(f), span })
-            }
-            Some(TokenSpan { token: Token::Char(c), span }) => { 
-                Constant::Character(TokenSpan { token: Token::Char(c), span })
-            }
-            Some(TokenSpan { token: Token::Boolean(b), span }) => { 
-                Constant::Boolean(TokenSpan { token: Token::Boolean(b), span })
-            },
-            c => return Err(ParseError::Expected(
-                "Expected a character, boolean, float or integer".to_string(),
-                vec![
-                    Token::Boolean(true),
-                    Token::Integer(0),
-                    Token::Float(0f64),
-                    Token::Char("".to_string())
-                ],
-                c
-            ))
         })
     }
 }
@@ -909,7 +951,7 @@ impl Constant {
 ///- branch_statement -> IF LPAREN expression RPAREN THEN body tail
 ///
 /// The branch_statement and if_statement were so close, that it was decided to actually
-/// Merge them into one, and to add some extra functionality, and to not go to the hussle of 
+/// Merge them into one, and to add some extra functionality, and to not go to the hussle of
 /// having to seek through too many tokens in order to determine which one it actually isbecause
 /// the beginning of both statements are identical
 ///
@@ -917,14 +959,14 @@ impl Constant {
 ///
 /// if_statement -> IF LPAREN expression RPAREN THEN body tail
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct IfStatement { 
+pub struct IfStatement {
     pub expression: Expression,
     pub body: Body,
-    pub tail: Option<Body>
+    pub tail: Option<Body>,
 }
 
-impl IfStatement { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {    
+impl IfStatement {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         cursor.expect(Token::Word(Word::Keyword(Keyword::If)))?;
         cursor.expect(Token::LParen)?;
 
@@ -936,18 +978,20 @@ impl IfStatement {
         let body = Body::parse(cursor)?;
 
         cursor.expect(Token::Word(Word::Keyword(Keyword::Endif)))?;
-        
-        Ok(IfStatement { 
+
+        Ok(IfStatement {
             expression,
             body,
-            tail: None
+            tail: None,
         })
     }
 }
 
 #[test]
-fn test_if_statement() { 
-    let mut cursor = to_cursor(r#"if ( .true. ) then integer x write "hello" if ( .false. ) then write "false" endif endif"#);
+fn test_if_statement() {
+    let mut cursor = to_cursor(
+        r#"if ( .true. ) then integer x write "hello" if ( .false. ) then write "false" endif endif"#,
+    );
 
     let if_statement = IfStatement::parse(&mut cursor).unwrap();
 
@@ -955,21 +999,25 @@ fn test_if_statement() {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum IoStatement { 
+pub enum IoStatement {
     Read(),
     Write(WriteList),
 }
 
-impl IoStatement { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+impl IoStatement {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         match cursor.next() {
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Write)), span: _ }) => { 
-                Ok(IoStatement::Write(WriteList::parse(cursor)?))
-            },
-            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), span: _ }) => { 
+            Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Write)),
+                span: _,
+            }) => Ok(IoStatement::Write(WriteList::parse(cursor)?)),
+            Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Read)),
+                span: _,
+            }) => {
                 todo!("Add support for IoStatement -> READ read_list")
-            },
-            _ => todo!("Add proper error support")
+            }
+            _ => todo!("Add proper error support"),
         }
     }
 }
@@ -977,21 +1025,24 @@ impl IoStatement {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WriteList(pub Vec<WriteItem>);
 
-impl WriteList { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+impl WriteList {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut list = vec![];
 
-        loop { 
+        loop {
             let item = WriteItem::parse(cursor)?;
 
             list.push(item);
 
-            match cursor.peek() { 
-                Some(TokenSpan { token: Token::Comma, .. }) => {
+            match cursor.peek() {
+                Some(TokenSpan {
+                    token: Token::Comma,
+                    ..
+                }) => {
                     cursor.next();
                     continue;
                 }
-                _ => break
+                _ => break,
             }
         }
 
@@ -1000,9 +1051,9 @@ impl WriteList {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum WriteItem { 
+pub enum WriteItem {
     Expression(),
-    /// Uhh.., not sure for what to name this 
+    /// Uhh.., not sure for what to name this
     ///
     ///  LPAREN write_list COMMA ID ASSIGN iter_space RPAREN
     Uhhh(),
@@ -1010,33 +1061,36 @@ pub enum WriteItem {
     String(String),
 }
 
-impl WriteItem { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
-        match cursor.next() { 
-            Some(TokenSpan { token: Token::String(string), span: _ }) => { 
-                Ok(Self::String(string))
-            },
-            Some(TokenSpan { token: Token::LParen, span: _ }) => { 
+impl WriteItem {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        match cursor.next() {
+            Some(TokenSpan {
+                token: Token::String(string),
+                span: _,
+            }) => Ok(Self::String(string)),
+            Some(TokenSpan {
+                token: Token::LParen,
+                span: _,
+            }) => {
                 todo!("Add support for WriteItem -> LPAREN write_list COMMA ID ASSIGN iter_space RPAREN");
-            },
-            Some(TokenSpan { token: _, span: _}) => { 
+            }
+            Some(TokenSpan { token: _, span: _ }) => {
                 todo!("Add support for WriteItem -> expression")
-            },
+            }
             next => Err(ParseError::Expected(
                 "Expected either an expression, a string or left parenthesis".to_string(),
-                vec![
-
-                ],
-                next
-            ))
+                vec![],
+                next,
+            )),
         }
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ExpressionList(Vec<Expression>);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum Expression { 
+pub enum Expression {
     Or(),
     And(),
     /// > < >= <= etc
@@ -1046,19 +1100,124 @@ pub enum Expression {
     Div(),
     Pow(),
     Not(),
-    Variable(),
+    Variable(Variable),
     Constant(Constant),
-    Expression(Box<Expression>)
+    Expression(Box<Expression>),
+    /// Added since just stirngs on their own could be considered an expression
+    String(TokenSpan)
 }
 
-impl Expression { 
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
-        if let Ok(_) = Constant::parse(&mut cursor.clone()) { 
-            let constant = Constant::parse(cursor).unwrap();
-
-            return Ok(Expression::Constant(constant))
+impl Expression {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        if let Some(TokenSpan { token: Token::String(_), ..}) = cursor.peek() { 
+            return Ok(Expression::String(cursor.next().unwrap()))
         }
         
+        if let Ok(_) = Constant::parse(&mut cursor.clone()) {
+            let constant = Constant::parse(cursor).unwrap();
+
+            return Ok(Expression::Constant(constant));
+        }
+        
+        if let Ok(_) = Variable::parse(&mut cursor.clone()) {
+            let var = Variable::parse(cursor).unwrap();
+
+            return Ok(Expression::Variable(var));
+        }
+
         todo!("Add support for the rest of the expressions");
+    }
+}
+
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Assignment { 
+    pub variable: Variable,
+    pub expression: Expression
+}
+
+impl Assignment { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let variable = Variable::parse(cursor)?;
+        
+        cursor.expect(Token::AssignOp(AssignOp::Assign))?;
+        
+        let expression = Expression::parse(cursor)?;
+
+        Ok(Self { 
+                    variable,
+                    expression
+                })
+    }
+}
+
+#[test]
+fn test_assigments() { 
+    let mut cursor = to_cursor(r#"id = "hello, world""#);
+
+    let assigment = Assignment::parse(&mut cursor).unwrap();
+
+    println!("{}", serde_json::to_string_pretty(&assigment).unwrap());
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Variables(Vec<Variable>);
+
+impl Variables { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let mut variables = vec![];
+
+        loop { 
+            let var = Variable::parse(cursor)?;
+
+            variables.push(var);
+
+            match cursor.peek() {
+                Some(TokenSpan { token: Token::Colon, .. }) => { 
+                    cursor.next();
+                    continue;
+                },
+                _ => break
+            }
+        }
+
+        Ok(Self(variables))
+    }
+}
+
+#[test]
+fn test_variables() { 
+    let _ = env_logger::try_init();
+    let mut cursor = to_cursor("one : two : three");
+
+    let vars = Variables::parse(&mut cursor).unwrap();
+
+    // println!("{}", serde_json::to_string_pretty(&vars).unwrap());
+    assert_eq!(vars.0.len(), 3);
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Variable {
+    pub id: ID,
+    pub expressions: Option<ExpressionList>,
+}
+
+impl Variable {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        let id = cursor.expect_ident()?;
+
+        let expressions = match cursor.peek() {
+            Some(TokenSpan {
+                token: Token::LParen,
+                span,
+            }) => todo!("Add support for LParen: variable -> ID LParen expressions RParen"),
+            _ => None,
+        };
+
+        Ok(Self {
+            id: ID(id),
+            expressions,
+        })
     }
 }

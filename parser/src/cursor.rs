@@ -1,9 +1,11 @@
 use lexer::{TokenSpan, token::{Identifier, Token, Word}};
 
 use crate::{ParseError, ParseResult};
+use serde::{ Serialize, Deserialize };
 
+use log_derive::{ logfn, logfn_inputs };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Cursor {
     tokens: Vec<TokenSpan>,
     current_token: usize,
@@ -32,6 +34,24 @@ impl Cursor {
         } else {
             None
         }
+    }
+
+    #[logfn_inputs(Trace)]
+    #[logfn(Trace)]
+    pub fn check_if(&self, ahead: usize, token: Token) -> bool { 
+        if self.tokens.len() < self.current_token + ahead { 
+            false
+        } else if self.tokens[self.current_token + ahead].token == token { 
+            true 
+        } else { 
+            false
+        }
+    }
+
+    #[logfn_inputs(Trace)]
+    #[logfn(Trace)]
+    pub fn check_if_next(&self, token: Token) -> bool { 
+        self.check_if(1, token)
     }
 
     pub fn expect_fn<F: Fn(Token) -> bool>(&mut self, expect: F) -> ParseResult<TokenSpan> {
@@ -77,6 +97,7 @@ impl Cursor {
     pub fn expect_ident(&mut self) -> ParseResult<TokenSpan> {
         if let Some(TokenSpan { token, span }) = self.peek() {
             if let Token::Word(Word::Identifier(_)) = token {
+                self.next();
                 Ok(TokenSpan { token, span })
             } else {
                 Err(ParseError::Expected(
