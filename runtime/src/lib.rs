@@ -2,7 +2,7 @@ use std::{fmt::Debug};
 
 use errors::Error;
 
-use parser::{Body, Declarations, IoStatement, LabeledStatement, Program, Statement, StatementList, WriteItem, WriteList};
+use parser::{Body, Constant, Declarations, Expression, IfStatement, IoStatement, LabeledStatement, Program, Statement, StatementList, WriteItem, WriteList};
 
 use log::{ trace, info, };
 use log_derive::{logfn_inputs};
@@ -10,9 +10,11 @@ use log_derive::{logfn_inputs};
 
 use colored::*;
 
-use lexer::Lexer;
+use lexer::{Lexer, token::Token};
 use parser::cursor::Cursor;
 use scope::{ScopeManager};
+use truthy::Truthy;
+use variable::{Value, Variable};
 
 pub type EvalResult<T> = Result<T, Error>;
 
@@ -38,7 +40,7 @@ impl Runtime {
         }
     }
 
-    pub fn eval_string(&mut self, input: String) { 
+    pub fn eval(&mut self, input: String) { 
         let mut lexer = Lexer::new(input.chars().peekable());
 
         let tokens = lexer.lex().expect("Failed to evaluate a string");
@@ -51,8 +53,25 @@ impl Runtime {
 
     #[logfn_inputs(Trace)]
     fn eval_program(&mut self, program: Program) {
-        info!("handling body");
+        // TODO
+        // First handle the subprograms in order to add the
+        // Function declarations to the global scope
         self.handle_body(&program.body);
+    }
+
+    fn eval_expression(&mut self, expression: &Expression) -> Variable { 
+        match expression { 
+            Expression::Constant(c) => Variable::Value( match c { 
+                Constant::Integer(i) => Value::Integer(i.token.value().parse().unwrap()),
+                Constant::Real(r) => Value::Float(r.token.value().parse().unwrap()),
+                Constant::Boolean(b) => Value::Boolean(match b.token { 
+                    Token::Boolean(b) => b,
+                    _ => unreachable!()
+                }),
+                Constant::Character(c) => Value::Char(c.token.value().into()),
+            }),
+            _ => todo!()
+        }
     }
 
     #[logfn_inputs(Trace)]
@@ -84,7 +103,22 @@ impl Runtime {
             Statement::Io(IoStatement::Write(write)) => { 
                 self.handle_write_list(write);
             }
+            Statement::If(if_statement) => { 
+                self.handle_if_statement(if_statement)
+            }
             c => todo!("Add support for statement {:?}", c)
+        }
+    }
+
+    fn handle_if_statement(&mut self, statement: &IfStatement) { 
+        let var = self.eval_expression(&statement.expression);
+
+        if var.truthy() { 
+            self.handle_body(&statement.body);
+        } else if let Some(_else_body) = &statement.tail { 
+            todo!("Handle Else Statement");
+        } else { 
+            // do nothing
         }
     }
 
@@ -122,7 +156,7 @@ fn to_cursor(input: &str) -> Cursor {
 #[test]
 fn basic_program() { 
     let _ = env_logger::try_init();
-    let program = r#"integer x, y, z write "hello, world" "#;
+    let program = r#"if ( 123 ) then write "hello" endif"#;
     info!("Running program {}", program.to_string().blue());
     let mut cursor = to_cursor(program);
 

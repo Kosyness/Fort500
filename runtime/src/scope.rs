@@ -17,9 +17,8 @@ use crate::variable::{Value, Variable};
 use colored::*;
 
 pub struct ScopeManager {
-    // pub scopes: Vec<Arc<Mutex<Scope>>>
     pub scopes: Vec<BTreeMap<String, Variable>>,
-    length: usize,
+    pub length: usize,
 }
 
 impl ScopeManager {
@@ -64,7 +63,8 @@ impl ScopeManager {
     }
 
     pub fn set(&mut self, identifier: Identifier, var: Variable) {
-        self.scopes[self.length - 1].insert(identifier.0, var);
+        let length = self.scopes.len();
+        self.scopes[length - 1].insert(identifier.0, var);
     }
 
     pub fn set_global(&mut self, identifier: Identifier, var: Variable) {
@@ -90,7 +90,7 @@ impl ScopeManager {
                 );
                 match var_type.0.token {
                     Token::Word(Word::Keyword(Keyword::Integer)) => {
-                        self.set_global(id, Variable::Value(Value::Integer(0)));
+                        self.set(id, Variable::Value(Value::Integer(0)));
                     }
                     _ => todo!(),
                 }

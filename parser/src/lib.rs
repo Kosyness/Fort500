@@ -1,32 +1,29 @@
 pub mod cursor;
 
-
+use serde:: { Serialize, Deserialize };
 
 use cursor::Cursor;
-use lexer::{
-    token::{Identifier, Word},
-    token::{Keyword, Token},
-    TokenSpan,
-};
+use lexer::{TokenSpan, token::{BinOp, Identifier, Word}, token::{Keyword, Token}};
 
 use colored::*;
 
-use ptree::{TreeBuilder};
+use ptree::{TreeBuilder, print_tree};
 
 trait Treeable {
     fn add_to_tree(&self, tree: &mut TreeBuilder);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ParseError {
     InvalidState,
     Expected(String, Vec<Token>, Option<TokenSpan>),
     EOF,
+    EndIf,
 }
 
 type ParseResult<T> = Result<T, ParseError>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Program {
     pub body: Body,
     pub subprograms: Vec<Subprogram>,
@@ -43,7 +40,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Body {
     pub declarations: Declarations,
     pub statements: StatementList,
@@ -63,15 +60,17 @@ impl Body {
 
 #[test]
 fn body_test() { 
-    let mut cursor = to_cursor(r#"   integer hello 
-                          write "hello""#);
+    let mut cursor = to_cursor(r#"   
+                                integer hello 
+                                write "hello"
+                           "#);
 
     let program = Program::parse(&mut cursor).unwrap();
 
     println!("{:?}", program);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Declarations(pub Vec<Declaration>);
 
 impl Treeable for Declarations {
@@ -145,7 +144,7 @@ fn test_declarations() {
     print_tree(&tree.build()).unwrap();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Declaration {
     Basic(BasicVarDeclaration),
     Record(RecordVarDeclaration),
@@ -178,7 +177,7 @@ impl Declaration {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RecordVarDeclaration {
     pub fields: Fields,
     pub vars: VarDeclarations,
@@ -225,7 +224,7 @@ fn test_record_var_declaration() {
     assert_eq!(record.vars.0.len(), 2);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VarDeclarations(pub Vec<VarDeclaration>);
 
 impl Treeable for VarDeclarations {
@@ -300,7 +299,7 @@ fn test_var_declarations_multiple() {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum VarDeclaration {
     Single(ID),
     Array { id: ID, dimensions: Dimensions },
@@ -400,7 +399,7 @@ fn test_var_declaration_single() {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dimensions(pub Vec<Dimension>);
 
 impl Treeable for Dimensions {
@@ -456,7 +455,7 @@ fn test_dimensions() {
     assert_eq!(dimension.0.len(), 2);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Dimension {
     Integer(TokenSpan),
     ID(ID),
@@ -513,7 +512,7 @@ impl Dimension {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fields(Vec<Field>);
 
 impl Treeable for Fields {
@@ -550,7 +549,7 @@ impl Fields {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Field {
     Record(RecordFieldDeclaration),
     Basic(BasicFieldDeclaration),
@@ -661,7 +660,7 @@ fn test_dimension_ident() {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BasicVarDeclaration {
     pub declaration_type: DeclarationType,
     pub vars: VarDeclarations,
@@ -702,7 +701,7 @@ fn test_basic_var_declaration() {
     assert_eq!(declaration.vars.0.len(), 1);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DeclarationType(pub TokenSpan);
 
 impl Treeable for DeclarationType {
@@ -768,10 +767,10 @@ fn test_declaration_type() {
     )
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Subprogram;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ID(pub TokenSpan);
 
 impl Treeable for ID {
@@ -788,7 +787,7 @@ impl Treeable for ID {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StatementList(pub Vec<LabeledStatement>);
 
 impl StatementList { 
@@ -803,7 +802,7 @@ impl StatementList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LabeledStatement {
     pub label: Option<TokenSpan>,
     pub statement: Statement
@@ -830,26 +829,13 @@ impl LabeledStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Statement { 
     Goto(),
     /// # If Statement
     ///
-    /// Since the if statment had two definitions:
-    /// - if_statement -> it did not include THEN
-    ///     - IF LPAREN expression RPAREN label COMMA label COMMA label
-    ///     - IF LPAREN expression RPAREN simple_statement
-    ///- branch_statement -> IF LPAREN expression RPAREN THEN body tail
-    ///
-    /// The branch_statement and if_statement were so close, that it was decided to actually
-    /// Merge them into one, and to add some extra functionality, and to not go to the hussle of 
-    /// having to seek through too many tokens in order to determine which one it actually isbecause
-    /// the beginning of both statements are identical
-    ///
-    /// Result:
-    ///
-    /// if_statement -> IF LPAREN expression RPAREN THEN body tail
-    If(),
+    /// See [IfStatement] as the definition of the `if_statement` was changed
+    If(IfStatement),
     Loop(),
     SubroutineCall(),
     Io(IoStatement),
@@ -865,13 +851,110 @@ impl Statement {
             Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Read)), .. }) => { 
                 Ok(Statement::Io(IoStatement::parse(cursor)?))
             }
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::If)), .. }) => { 
+                Ok(Statement::If(IfStatement::parse(cursor)?))
+            }
+            Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::Endif)), .. }) => { 
+                Err(ParseError::EndIf)
+            }
             Some(t) => todo!("Add support for Statement with {:?}", t.token),
             _ => todo!("Add error handling")
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum Constant { 
+    Integer(TokenSpan),
+    Real(TokenSpan),
+    Character(TokenSpan),
+    Boolean(TokenSpan),
+}
+
+impl Constant { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        Ok(match cursor.next() { 
+            Some(TokenSpan { token: Token::Integer(int), span }) => { 
+                Constant::Integer(TokenSpan { token: Token::Integer(int), span })
+            }
+            Some(TokenSpan { token: Token::Float(f), span }) => { 
+                Constant::Integer(TokenSpan { token: Token::Float(f), span })
+            }
+            Some(TokenSpan { token: Token::Char(c), span }) => { 
+                Constant::Character(TokenSpan { token: Token::Char(c), span })
+            }
+            Some(TokenSpan { token: Token::Boolean(b), span }) => { 
+                Constant::Boolean(TokenSpan { token: Token::Boolean(b), span })
+            },
+            c => return Err(ParseError::Expected(
+                "Expected a character, boolean, float or integer".to_string(),
+                vec![
+                    Token::Boolean(true),
+                    Token::Integer(0),
+                    Token::Float(0f64),
+                    Token::Char("".to_string())
+                ],
+                c
+            ))
+        })
+    }
+}
+
+/// # If Statement
+///
+/// Since the if statment had two definitions:
+/// - if_statement -> it did not include THEN
+///     - IF LPAREN expression RPAREN label COMMA label COMMA label
+///     - IF LPAREN expression RPAREN simple_statement
+///- branch_statement -> IF LPAREN expression RPAREN THEN body tail
+///
+/// The branch_statement and if_statement were so close, that it was decided to actually
+/// Merge them into one, and to add some extra functionality, and to not go to the hussle of 
+/// having to seek through too many tokens in order to determine which one it actually isbecause
+/// the beginning of both statements are identical
+///
+/// Result:
+///
+/// if_statement -> IF LPAREN expression RPAREN THEN body tail
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IfStatement { 
+    pub expression: Expression,
+    pub body: Body,
+    pub tail: Option<Body>
+}
+
+impl IfStatement { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {    
+        cursor.expect(Token::Word(Word::Keyword(Keyword::If)))?;
+        cursor.expect(Token::LParen)?;
+
+        let expression = Expression::parse(cursor)?;
+
+        cursor.expect(Token::RParen)?;
+        cursor.expect(Token::Word(Word::Keyword(Keyword::Then)))?;
+
+        let body = Body::parse(cursor)?;
+
+        cursor.expect(Token::Word(Word::Keyword(Keyword::Endif)))?;
+        
+        Ok(IfStatement { 
+            expression,
+            body,
+            tail: None
+        })
+    }
+}
+
+#[test]
+fn test_if_statement() { 
+    let mut cursor = to_cursor(r#"if ( .true. ) then integer x write "hello" if ( .false. ) then write "false" endif endif"#);
+
+    let if_statement = IfStatement::parse(&mut cursor).unwrap();
+
+    println!("{}", serde_json::to_string(&if_statement).unwrap());
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum IoStatement { 
     Read(),
     Write(WriteList),
@@ -891,7 +974,7 @@ impl IoStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WriteList(pub Vec<WriteItem>);
 
 impl WriteList { 
@@ -916,7 +999,7 @@ impl WriteList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum WriteItem { 
     Expression(),
     /// Uhh.., not sure for what to name this 
@@ -947,5 +1030,35 @@ impl WriteItem {
                 next
             ))
         }
+    }
+}
+
+pub struct ExpressionList(Vec<Expression>);
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum Expression { 
+    Or(),
+    And(),
+    /// > < >= <= etc
+    Rel(),
+    Add(),
+    Mul(),
+    Div(),
+    Pow(),
+    Not(),
+    Variable(),
+    Constant(Constant),
+    Expression(Box<Expression>)
+}
+
+impl Expression { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        if let Ok(_) = Constant::parse(&mut cursor.clone()) { 
+            let constant = Constant::parse(cursor).unwrap();
+
+            return Ok(Expression::Constant(constant))
+        }
+        
+        todo!("Add support for the rest of the expressions");
     }
 }

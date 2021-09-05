@@ -1,4 +1,8 @@
+use parser::Body;
+
 use crate::{EvalResult, errors::Error};
+
+use truthy::Truthy;
 
 #[derive(Debug, Clone)]
 pub enum Variable { 
@@ -6,13 +10,56 @@ pub enum Variable {
     Value(Value)
 }
 
+impl Truthy for Variable { 
+    fn truthy(&self) -> bool {
+        match self { 
+            Variable::Array() => todo!(),
+            Variable::Value(v) => v.truthy() 
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value { 
     Integer(i64),
     Float(f64),
-    Char(char),
+    Char(StringValue),
     Boolean(bool),
-    Structure()
+    Structure(),
+    Function()
+}
+
+#[derive(Debug, Clone)]
+pub struct StringValue(pub String);
+
+impl Truthy for StringValue{ 
+    fn truthy(&self) -> bool {
+        self.0.len() > 0 
+    }
+}
+
+impl From<String> for StringValue { 
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for StringValue { 
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl Truthy for Value { 
+    fn truthy(&self) -> bool {
+        match self { 
+            Self::Integer(i) => i.truthy(),
+            Self::Float(f) => f.truthy(),
+            Self::Char(c) => c.truthy(),
+            Self::Boolean(b) => *b,
+            _ => todo!()
+        }
+    }
 }
 
 impl Value { 

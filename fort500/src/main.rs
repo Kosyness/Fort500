@@ -10,6 +10,6 @@ fn main() {
     loop { 
         print!("{} ", ">>>".blue().bold());
         let line = input::<String>().get();
-        runtime.eval_string(line);
+        runtime.eval(line);
     }
 }

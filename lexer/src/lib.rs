@@ -203,7 +203,6 @@ impl<'chars> Lexer<'chars> {
                     panic!("Unexpected Token found {}", c);
                 }
                 Some(c) if c.is_numeric() => {
-                    println!("FOUND NUMERIC {}", c);
                     epsilon += c.to_string().as_str();
                 }
                 Some(c) => {
@@ -226,10 +225,6 @@ impl<'chars> Lexer<'chars> {
         if type_.is_none() {
             type_ = Some(Type::Positive);
         }
-        println!(
-            "Converting Scientific Notation Number {} e {:?} {}",
-            input, type_, epsilon
-        );
         Ok(Some(Token::Integer(69)))
     }
 
@@ -345,9 +340,6 @@ impl<'chars> Lexer<'chars> {
             }
         };
 
-        println!("{} {}", first, second);
-
-        
         Ok(Some(match contains_dot {
             true => Token::Float(i64::from_str_radix(first.as_str(), radix).unwrap() as f64),
             false => Token::Integer(i64::from_str_radix(first.as_str(), radix).unwrap()),
@@ -558,7 +550,6 @@ mod lexer_tests {
         let mut lexer = Lexer::new(iterator.peekable());
 
         let s = serde_json::to_string(&lexer.lex()).unwrap();
-        println!("{}", s);
     }
 }
 
