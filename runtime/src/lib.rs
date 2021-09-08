@@ -57,7 +57,7 @@ impl Runtime {
     }
 
     #[logfn_inputs(Trace)]
-    fn eval_program(&mut self, program: Program) {
+    pub fn eval_program(&mut self, program: Program) {
         // TODO
         // First handle the subprograms in order to add the
         // Function declarations to the global scope
@@ -143,7 +143,7 @@ impl Runtime {
             WriteItem::String(string) => {
                 trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
 
-                println!("{}", string)
+                println!("{}  {}", "->".green().bold(), string)
             }
             c => todo!("Add suppot for {:?}", c),
         }

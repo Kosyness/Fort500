@@ -1,4 +1,4 @@
-use lexer::{TokenSpan, token::{Identifier, Token, Word}};
+use lexer::{Lexer, LexerResult, TokenError, TokenSpan, token::{Identifier, Token, Word}};
 
 use crate::{ParseError, ParseResult};
 use serde::{ Serialize, Deserialize };
@@ -12,6 +12,11 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    pub fn from_str(string: String) -> Result<Self, TokenError> { 
+        let mut lexer = Lexer::new(string.chars().peekable());
+        Ok(Self::new(lexer.lex()?))
+    }
+
     pub fn new(tokens: Vec<TokenSpan>) -> Self {
         Self {
             tokens,
@@ -39,7 +44,7 @@ impl Cursor {
     #[logfn_inputs(Trace)]
     #[logfn(Trace)]
     pub fn check_if(&self, ahead: usize, token: Token) -> bool { 
-        if self.tokens.len() < self.current_token + ahead { 
+        if self.tokens.len() - 1 < self.current_token + ahead { 
             false
         } else if self.tokens[self.current_token + ahead].token == token { 
             true 

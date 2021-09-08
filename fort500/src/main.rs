@@ -1,6 +1,8 @@
 use colored::*;
+use parser::{Program, cursor::Cursor};
 use read_input::prelude::*;
 use runtime::Runtime;
+use log::{ error };
 
 fn print_help() {
     println!(
@@ -15,6 +17,7 @@ fn main() {
     let _ = env_logger::try_init();
     let mut runtime = Runtime::new();
 
+    runtime.eval("if (.true.) then write \"hello, world\" endif".into());
     let mut multiline = false;
     let mut multilined_input = "".to_string();
     loop {
@@ -24,12 +27,44 @@ fn main() {
         };
 
         let line = input::<String>().get();
+        multilined_input += format!("\n{}", line).as_str();
+
+        let mut cursor = match Cursor::from_str(multilined_input.clone()) { 
+            Ok(res) => res,
+            Err(e) => {
+                error!("SyntaxError: {:?}", e);
+                multilined_input = "".into();
+                multiline = false;
+                continue;
+            }
+        };
+
+        let program = match Program::parse(&mut cursor) { 
+            Ok(program) => program,
+            Err(parser::ParseError::Expected(_, _, None)) => { 
+                multiline = true;
+                continue;
+            },
+            Err(e) => {
+                error!("SyntaxError: {:?}", e);
+                multilined_input = "".into();
+                continue;
+            }
+        };
+
+        runtime.eval_program(program);
+        multilined_input = "".into();
+        multiline = false;
+        continue;
+
+        let line = input::<String>().get();
 
         match line.as_str() {
             "?" => print_help(),
             "--" if !multiline => multiline = true,
             "--" if multiline => {
                 multiline = false;
+                // let mut cursor = Cursor::from_str(mulit)
                 runtime.eval(multilined_input);
                 multilined_input = "".to_string();
             }
