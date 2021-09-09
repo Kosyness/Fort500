@@ -2,6 +2,7 @@ use colored::*;
 use parser::{Program, cursor::Cursor};
 use read_input::prelude::*;
 use runtime::{Runtime, variable::{Truthy, Value, Variable}};
+use log::{ error, warn, info, };
 
 fn print_help() {
     println!(
