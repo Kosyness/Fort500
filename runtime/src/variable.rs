@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 use crate::{EvalResult, Runtime, errors::Error};
 
 use colored::Colorize;
-use truthy::Truthy;
+pub use truthy::Truthy;
 
 #[derive(Debug, Clone)]
 pub enum Variable { 
@@ -13,6 +13,7 @@ pub enum Variable {
     Value(Value),
     Null,
     Undefined,
+    Result(Result<Box<Variable>, String>),
 }
 
 impl Display for Variable { 
@@ -22,6 +23,10 @@ impl Display for Variable {
             Self::Null => write!(f, "null"),
             Self::Undefined => write!(f, "undefined"),
             Self::Value(v) => write!(f, "{}", v),
+            Self::Result(r) => match r { 
+                Ok(r) => write!(f, "{}", r),
+                Err(e) => write!(f, "err: {}", e)
+            }
         }
     }
 }
@@ -49,12 +54,17 @@ impl Display for FunctionValue {
 }
 
 impl Truthy for Variable { 
+    
     fn truthy(&self) -> bool {
         match self { 
             Variable::Array() => todo!(),
             Variable::Value(v) => v.truthy(),
             Variable::Null => false,
             Variable::Undefined => false,
+            Variable::Result(r) => match r { 
+                Ok(_) => true,
+                Err(_) => false
+            }
         }
     }
 }
@@ -112,7 +122,9 @@ impl Truthy for Value {
             Self::Float(f) => f.truthy(),
             Self::Char(c) => c.truthy(),
             Self::Boolean(b) => *b,
-            _ => todo!()
+            Self::String(s) => !s.is_empty(),
+            Self::Function(_) => true,
+            Self::Structure() => true,
         }
     }
 }

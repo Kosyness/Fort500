@@ -214,13 +214,17 @@ impl Runtime {
             WriteItem::String(string) => {
                 trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
 
+<<<<<<< HEAD
+                println!("{}  {}", "->".green(), string)
+=======
 
                 println!("{}", string)
+>>>>>>> eca33f86f8600fecc2bad5968757460c62057f53
             },
             WriteItem::Expression(expression) => { 
                 let result = self.eval_expression(&expression);
 
-                println!("{}", result);
+                println!("{}  {}", "->".green(), result);
             }
             c => todo!("Add suppot for {:?}", c),
         }
