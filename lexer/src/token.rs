@@ -414,6 +414,9 @@ pub enum Keyword {
 
     #[strum(serialize = "character")]
     Character,
+    
+    #[strum(serialize = "string")]
+    String,
 
     #[strum(serialize = "record")]
     Record,

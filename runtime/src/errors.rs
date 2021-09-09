@@ -4,6 +4,7 @@ use serde::{ Serialize, Deserialize };
 pub enum Error { 
     RuntimeError(String, String),
     VariableAssignmentError(String,),
+    TypeError(String),
     ReferenceError(String,),
     DeclarationError(String, String)
 }

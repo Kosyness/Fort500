@@ -56,6 +56,16 @@ impl Body {
             statements,
         })
     }
+
+    pub fn parse_ignore_error_if<Function: Fn(Option<TokenSpan>) -> bool>(cursor: &mut Cursor, f: Function) -> ParseResult<Self> {
+        let declarations = Declarations::parse(cursor)?;
+        let statements = StatementList::parse_ignore_error_if(cursor, f)?;
+
+        Ok(Self {
+            declarations,
+            statements,
+        })
+    }
 }
 
 #[test]
@@ -738,7 +748,8 @@ impl DeclarationType {
             | Some(TokenSpan {
                 token: Token::Word(Word::Keyword(Keyword::Logical)),
                 ..
-            }) => {
+            })
+            | Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::String)), ..}) => {
                 let token = cursor.next().unwrap();
                 return Ok(Self(token));
             }
@@ -750,6 +761,8 @@ impl DeclarationType {
                         Token::Word(Word::Keyword(Keyword::Real)),
                         Token::Word(Word::Keyword(Keyword::Character)),
                         Token::Word(Word::Keyword(Keyword::Logical)),
+                        Token::Word(Word::Keyword(Keyword::String
+                        )),
                     ],
                     token,
                 ))
@@ -802,6 +815,20 @@ impl StatementList {
 
         Ok(StatementList(statements))
     }
+
+    pub fn parse_ignore_error_if<Function: Fn(Option<TokenSpan>) -> bool> (cursor: &mut Cursor, f: Function) -> ParseResult<Self> {
+        let mut statements = vec![];
+
+        loop { 
+            match LabeledStatement::parse(cursor) { 
+                Ok(statement) => statements.push(statement),
+                Err(ParseError::Expected(..)) if f(cursor.peek()) => break,
+                Err(e) => return Err(e)
+            }
+        }
+
+        Ok(StatementList(statements))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -844,7 +871,7 @@ pub enum Statement {
     /// See [IfStatement] as the definition of the `if_statement` was changed
     If(IfStatement),
     Loop(),
-    SubroutineCall(),
+    FunctionCall(FunctionCall),
     Io(IoStatement),
     Continue(TokenSpan),
     Return(TokenSpan),
@@ -871,6 +898,7 @@ impl Statement {
                 ..
             }) => Err(ParseError::EndIf),
             _ if cursor.check_if(1, Token::AssignOp(AssignOp::Assign)) => Ok(Statement::Assignment(Assignment::parse(cursor)?)),
+            _ if cursor.check_if(1, Token::LParen) => Ok(Statement::FunctionCall(FunctionCall::parse(cursor)?)),
             Some(t) => todo!("Add support for Statement with {:?}", t.token),
             _ => todo!("Add error handling"),
         }
@@ -886,6 +914,41 @@ fn test_assignments_in_statements() {
 
     println!("{}", serde_json::to_string_pretty(&statement).unwrap());
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCall { 
+    pub identifier: ID,
+    pub variables: FunctionVariableList,
+    // return_type: DeclarationType,
+    // body: Body
+}
+
+impl FunctionCall { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let id = cursor.expect_ident()?;
+
+
+        cursor.expect(Token::LParen)?;
+        let vars = FunctionVariableList::parse(cursor)?;
+        cursor.expect(Token::RParen)?;
+        
+        Ok(Self { 
+                    identifier: ID(id),
+                    variables: vars
+                })
+    }
+}
+
+#[test]
+fn test_function_call() { 
+    let mut cursor = to_cursor("hello(1, 2, 3)");
+
+    let fn_call = FunctionCall::parse(&mut cursor).unwrap();
+
+    println!("{}", serde_yaml::to_string(&fn_call).unwrap());
+}
+
+pub type FunctionVariableList = ExpressionList;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Constant {
@@ -1022,6 +1085,15 @@ impl IoStatement {
     }
 }
 
+#[test]
+fn test_io_statement() { 
+    let mut cursor = to_cursor("write x");
+
+    let statement = IoStatement::parse(&mut cursor);
+
+    println!("{:?}", statement);
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WriteList(pub Vec<WriteItem>);
 
@@ -1052,7 +1124,7 @@ impl WriteList {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum WriteItem {
-    Expression(),
+    Expression(Expression),
     /// Uhh.., not sure for what to name this
     ///
     ///  LPAREN write_list COMMA ID ASSIGN iter_space RPAREN
@@ -1063,19 +1135,22 @@ pub enum WriteItem {
 
 impl WriteItem {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
-        match cursor.next() {
+        match cursor.peek() {
             Some(TokenSpan {
                 token: Token::String(string),
                 span: _,
-            }) => Ok(Self::String(string)),
+            }) => {
+                cursor.next();
+                Ok(Self::String(string))
+            },
             Some(TokenSpan {
                 token: Token::LParen,
                 span: _,
             }) => {
                 todo!("Add support for WriteItem -> LPAREN write_list COMMA ID ASSIGN iter_space RPAREN");
             }
-            Some(TokenSpan { token: _, span: _ }) => {
-                todo!("Add support for WriteItem -> expression")
+            Some(TokenSpan { token: t, span: _ }) => {
+                Ok(Self::Expression(Expression::parse(cursor)?))
             }
             next => Err(ParseError::Expected(
                 "Expected either an expression, a string or left parenthesis".to_string(),
@@ -1087,10 +1162,36 @@ impl WriteItem {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ExpressionList(Vec<Expression>);
+pub struct ExpressionList(pub Vec<Expression>);
+
+impl ExpressionList { 
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        let mut expressions = vec![];
+
+        loop { 
+            let e = Expression::parse(cursor);
+            if let Ok(expression) =  e{
+                expressions.push(expression);
+
+                match cursor.peek() { 
+                    Some(TokenSpan { token: Token::Comma, ..}) => { 
+                        cursor.next();
+                        continue;
+                    },
+                    _ => break
+                }
+            } else { 
+                break;
+            }
+        }
+
+        Ok(Self(expressions))
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Expression {
+    Empty,
     Or(),
     And(),
     /// > < >= <= etc
@@ -1104,12 +1205,14 @@ pub enum Expression {
     Constant(Constant),
     Expression(Box<Expression>),
     /// Added since just stirngs on their own could be considered an expression
-    String(TokenSpan)
+    String(TokenSpan),
+    Function(FunctionCall),
 }
 
 impl Expression {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         if let Some(TokenSpan { token: Token::String(_), ..}) = cursor.peek() { 
+            
             return Ok(Expression::String(cursor.next().unwrap()))
         }
         
@@ -1125,7 +1228,13 @@ impl Expression {
             return Ok(Expression::Variable(var));
         }
 
-        todo!("Add support for the rest of the expressions");
+        if let Ok(_) = FunctionCall::parse(&mut cursor.clone()) { 
+            let func = FunctionCall::parse(cursor).unwrap();
+
+            return Ok(Expression::Function(func));
+        }
+
+        Ok(Expression::Empty)
     }
 }
 
@@ -1198,26 +1307,49 @@ fn test_variables() {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Variable {
-    pub id: ID,
-    pub expressions: Option<ExpressionList>,
+pub enum Variable { 
+    Readable(ID),
+    Callable(FunctionCall)
 }
 
 impl Variable {
-    fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
-        let id = cursor.expect_ident()?;
-
-        let expressions = match cursor.peek() {
-            Some(TokenSpan {
-                token: Token::LParen,
-                span,
-            }) => todo!("Add support for LParen: variable -> ID LParen expressions RParen"),
-            _ => None,
-        };
-
-        Ok(Self {
-            id: ID(id),
-            expressions,
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        Ok(match cursor.check_if(1, Token::LParen) { 
+            true => Variable::Callable(FunctionCall::parse(cursor)?),
+            false => Variable::Readable(ID(cursor.expect_ident()?))
         })
     }
+}
+
+// pub struct Variable {
+//     pub id: ID,
+//     pub expressions: Option<ExpressionList>,
+// }
+
+// impl Variable {
+//     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+//         let id = cursor.expect_ident()?;
+
+//         println!("{:?}", cursor.peek());
+//         let expressions = match cursor.peek() {
+//             Some(TokenSpan {
+//                 token: Token::LParen,
+//                 span,
+//             }) => todo!("Add support for LParen: variable -> ID LParen expressions RParen"),
+//             _ => None,
+//         };
+
+//         Ok(Self {
+//             id: ID(id),
+//             expressions,
+//         })
+//     }
+// }
+
+#[test]
+fn test_assignment_with_fn_calls() {
+    let mut cursor = to_cursor("y = hello()");
+
+    let assignment = Assignment::parse(&mut cursor).unwrap();
+    println!("{:?}", assignment);
 }

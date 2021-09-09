@@ -39,7 +39,7 @@ impl Cursor {
     #[logfn_inputs(Trace)]
     #[logfn(Trace)]
     pub fn check_if(&self, ahead: usize, token: Token) -> bool { 
-        if self.tokens.len() < self.current_token + ahead { 
+        if self.tokens.len() - 1 < self.current_token + ahead { 
             false
         } else if self.tokens[self.current_token + ahead].token == token { 
             true 

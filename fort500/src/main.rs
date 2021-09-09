@@ -1,6 +1,6 @@
 use colored::*;
 use read_input::prelude::*;
-use runtime::Runtime;
+use runtime::{Runtime, variable::{Value, Variable}};
 
 fn print_help() {
     println!(
@@ -8,12 +8,27 @@ fn print_help() {
         r#"Type "--" in order to enter multiline mode, and then "--" to evaluate the expression"#
             .blue()
             .bold()
-    )
+    );
 }
 
 fn main() {
     let _ = env_logger::try_init();
     let mut runtime = Runtime::new();
+
+    runtime.add_function("clear".into(), |_, _ | { 
+        println!("Calling native function");
+        Ok(None)
+    });
+
+    runtime.add_function("ReadFileToString".into(), |_, input| { 
+        let path = match input[0].clone() { 
+            Variable::Value(Value::String(s)) => s,
+            e => return Err(runtime::errors::Error::TypeError(format!("Expected String, got {:?}", e)))
+        };
+
+        let data = std::fs::read_to_string(path).unwrap();
+        Ok(Some(Variable::Value(Value::String(data))))
+    });
 
     let mut multiline = false;
     let mut multilined_input = "".to_string();
