@@ -19,7 +19,7 @@ use lexer::{
 };
 use parser::cursor::Cursor;
 use scope::ScopeManager;
-use truthy::Truthy;
+pub use truthy::Truthy;
 use variable::{CallableFunction, FunctionResult, FunctionValue, Value, Variable};
 
 pub type EvalResult<T> = Result<T, Error>;
