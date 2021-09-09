@@ -10,16 +10,18 @@ use std::{
 use log_derive::{logfn};
 
 use log::{debug, trace};
-use token::{BinOp, Token, Word};
+use token::{BinOp, Token, Word, WordError};
 
 use crate::token::AssignOp;
 
 pub mod token;
 pub type LexerResult<T> = Result<Option<T>, TokenError>;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum TokenError {
     EOF,
+    UnexpectedEOF,
+    WordError(WordError)
 }
 
 // pub trait Input : Debug + Clone {
@@ -99,8 +101,12 @@ impl<'chars> Lexer<'chars> {
     pub fn lex(&mut self) -> Result<Vec<TokenSpan>, TokenError> { 
         let mut tokens = vec![];
 
-        while let Ok(token_span) = self.next_token() { 
-            tokens.push(token_span)
+        loop { 
+            match self.next_token() { 
+                Ok(token_span) => tokens.push(token_span),
+                Err(TokenError::EOF) => break,
+                Err(e) => return Err(e)
+            };
         }
 
         Ok(tokens)
@@ -427,7 +433,8 @@ impl<'chars> Lexer<'chars> {
         } else if data == ".false." {
             return Ok(Some(Token::Boolean(false)));
         }
-        panic!("Expected a binary operation or boolean");
+
+        Err(TokenError::UnexpectedEOF)
     }
 
     #[logfn(Debug)]
@@ -437,7 +444,7 @@ impl<'chars> Lexer<'chars> {
         self.read_token()
     }
 
-    #[logfn(Trace)]
+    // #[logfn(Trace)]
     fn handle_ident_or_keyword(&mut self) -> LexerResult<Token> {
         let input = self.read_until_fn(|character| match character {
             'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => true,
@@ -450,7 +457,7 @@ impl<'chars> Lexer<'chars> {
             Ok(token) => {
                 return Ok(Some(Token::Word(token)));
             }
-            Err(e) => panic!("error: {:?}", e),
+            Err(e) => return Err(TokenError::WordError(e)),
         }
     }
 

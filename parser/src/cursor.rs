@@ -1,4 +1,4 @@
-use lexer::{TokenSpan, token::{Identifier, Token, Word}};
+use lexer::{Lexer, LexerResult, TokenError, TokenSpan, token::{Identifier, Token, Word}};
 
 use crate::{ParseError, ParseResult};
 use serde::{ Serialize, Deserialize };
@@ -12,6 +12,11 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    pub fn from_str(string: String) -> Result<Self, TokenError> { 
+        let mut lexer = Lexer::new(string.chars().peekable());
+        Ok(Self::new(lexer.lex()?))
+    }
+
     pub fn new(tokens: Vec<TokenSpan>) -> Self {
         Self {
             tokens,

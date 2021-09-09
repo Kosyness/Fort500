@@ -809,10 +809,20 @@ impl StatementList {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
         let mut statements = vec![];
 
-        while let Ok(statement) = LabeledStatement::parse(cursor) {
-            statements.push(statement);
+        loop { 
+            match LabeledStatement::parse(cursor) { 
+                Ok(st) => statements.push(st),
+                Err(ParseError::EndIf) => {
+                    // Not really efficient, but oh well
+                    match LabeledStatement::parse(&mut cursor.clone()) { 
+                        Ok(_) => continue,
+                        Err(_) => break
+                    }
+                },
+                Err(ParseError::EOF) => break,
+                Err(e) => return Err(e)
+            }
         }
-
         Ok(StatementList(statements))
     }
 
@@ -857,7 +867,7 @@ impl LabeledStatement {
                 label: None,
                 statement: Statement::parse(cursor)?,
             }),
-            _ => Err(ParseError::EOF),
+            None => Err(ParseError::EOF),
         }
     }
 }
@@ -896,7 +906,7 @@ impl Statement {
             Some(TokenSpan {
                 token: Token::Word(Word::Keyword(Keyword::Endif)),
                 ..
-            }) => Err(ParseError::EndIf),
+            }) => { Err(ParseError::EndIf) },
             _ if cursor.check_if(1, Token::AssignOp(AssignOp::Assign)) => Ok(Statement::Assignment(Assignment::parse(cursor)?)),
             _ if cursor.check_if(1, Token::LParen) => Ok(Statement::FunctionCall(FunctionCall::parse(cursor)?)),
             Some(t) => todo!("Add support for Statement with {:?}", t.token),
@@ -1211,6 +1221,10 @@ pub enum Expression {
 
 impl Expression {
     fn parse(cursor: &mut Cursor) -> ParseResult<Self> {
+        if cursor.peek().is_none() { 
+            return Err(ParseError::EOF);
+        }
+        
         if let Some(TokenSpan { token: Token::String(_), ..}) = cursor.peek() { 
             
             return Ok(Expression::String(cursor.next().unwrap()))

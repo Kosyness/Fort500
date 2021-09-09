@@ -180,6 +180,9 @@ version = "0.1.0"
 dependencies = [
  "colored",
  "env_logger",
+ "log",
+ "log-derive",
+ "parser",
  "read_input",
  "runtime",
 ]
