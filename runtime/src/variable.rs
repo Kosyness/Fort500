@@ -1,20 +1,60 @@
 
 
-use crate::{EvalResult, errors::Error};
+use std::fmt::{Debug, Display};
 
+use crate::{EvalResult, Runtime, errors::Error};
+
+use colored::Colorize;
 use truthy::Truthy;
 
 #[derive(Debug, Clone)]
 pub enum Variable { 
     Array(),
-    Value(Value)
+    Value(Value),
+    Null,
+    Undefined,
+}
+
+impl Display for Variable { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self { 
+            Self::Array() => todo!(),
+            Self::Null => write!(f, "null"),
+            Self::Undefined => write!(f, "undefined"),
+            Self::Value(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl Display for Value { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self { 
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::String(b) => write!(f, "{}", b),
+            Value::Integer(b) => write!(f, "{}", b),
+            Value::Float(b) => write!(f, "{}", b),
+            Value::Char(b) => write!(f, "{}", b.0),
+            Value::Function(b) => write!(f, "{}", b),
+            Value::Structure() => write!(f, "struct {{}}"),
+        }
+    }
+}
+
+impl Display for FunctionValue { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self { 
+            FunctionValue::Native(_) => write!(f, "function() {{ {} }}", "[native code]".italic())
+        }
+    }
 }
 
 impl Truthy for Variable { 
     fn truthy(&self) -> bool {
         match self { 
             Variable::Array() => todo!(),
-            Variable::Value(v) => v.truthy() 
+            Variable::Value(v) => v.truthy(),
+            Variable::Null => false,
+            Variable::Undefined => false,
         }
     }
 }
@@ -26,7 +66,22 @@ pub enum Value {
     Char(StringValue),
     Boolean(bool),
     Structure(),
-    Function()
+    Function(FunctionValue),
+    String(String),
+}
+
+pub type FunctionResult = Result<Option<Variable>, Error>;
+pub type CallableFunction = fn(&mut Runtime, Vec<Variable>) -> FunctionResult;
+
+#[derive(Clone)]
+pub enum FunctionValue { 
+    Native(CallableFunction)
+}
+
+impl Debug for FunctionValue { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "function() {{ [Native Function] }}")
+    }
 }
 
 #[derive(Debug, Clone)]

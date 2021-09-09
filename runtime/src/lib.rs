@@ -3,24 +3,24 @@ use std::fmt::Debug;
 use errors::Error;
 
 use parser::{
-    Assignment, Body, Constant, Declarations, Expression, IfStatement, IoStatement,
+    Assignment, Body, Constant, Declarations, Expression, FunctionCall, IfStatement, IoStatement,
     LabeledStatement, Program, Statement, StatementList, Variable as ParsedVariable, WriteItem,
     WriteList, ID,
 };
 
-use log::{info, trace};
+use log::{error, info, trace, warn};
 use log_derive::logfn_inputs;
 
 use colored::*;
 
 use lexer::{
-    token::{Token, Word},
+    token::{Identifier, Token, Word},
     Lexer, TokenSpan,
 };
 use parser::cursor::Cursor;
 use scope::ScopeManager;
 use truthy::Truthy;
-use variable::{Value, Variable};
+use variable::{CallableFunction, FunctionResult, FunctionValue, Value, Variable};
 
 pub type EvalResult<T> = Result<T, Error>;
 
@@ -56,6 +56,13 @@ impl Runtime {
         self.eval_program(program);
     }
 
+    pub fn add_function(&mut self, identifier: Identifier, function: CallableFunction) {
+        self.global.set_global(
+            identifier,
+            Variable::Value(Value::Function(FunctionValue::Native(function))),
+        )
+    }
+
     #[logfn_inputs(Trace)]
     pub fn eval_program(&mut self, program: Program) {
         // TODO
@@ -75,13 +82,36 @@ impl Runtime {
                 }),
                 Constant::Character(c) => Value::Char(c.token.value().into()),
             }),
-            Expression::Variable(var) => {
-                match var.clone().id.0.token { 
-                    Token::Word(Word::Identifier(id)) => self.global.get(id).unwrap(),
-                    _ => unreachable!()
+            Expression::Variable(ParsedVariable::Readable(var)) => match var.clone().0.token {
+                Token::Word(Word::Identifier(id)) => self.global.get(id).unwrap(),
+                _ => unreachable!(),
+            },
+            Expression::Variable(ParsedVariable::Callable(function_call)) => match self.handle_function_call(function_call) { 
+                Ok(var) => match var { 
+                    Some(v) => v,
+                    None => Variable::Undefined
+                },
+                Err(e) => {
+                    error!("RuntimeError: called function threw an exception: {:?}", e);
+                    Variable::Undefined
                 }
             }
-            _ => todo!(),
+            Expression::Function(f) => match self.handle_function_call(f) { 
+                Ok(r) => match r {
+                    Some(s) => s,
+                    None => Variable::Undefined
+                },
+                Err(e) => {
+                    error!("FunctionCallError: ${:?}", e);
+                    Variable::Undefined
+                }
+            }
+            Expression::String(s) => Variable::Value(Value::String(s.token.value())),
+            Expression::Empty => {
+                warn!("Empty Expression");
+                Variable::Undefined
+            }
+            e => todo!("Implement Expression Handling for {:?}", e),
         }
     }
 
@@ -114,7 +144,48 @@ impl Runtime {
             Statement::Io(IoStatement::Write(write)) => self.handle_write_list(write),
             Statement::If(if_statement) => self.handle_if_statement(if_statement),
             Statement::Assignment(assignment) => self.handle_assignments(assignment),
+            Statement::FunctionCall(f) => {
+                match self.handle_function_call(f) {
+                    _ => {} // Err(e) => //println!("{}", e.n)
+                }
+            }
             c => todo!("Add support for statement {:?}", c),
+        }
+    }
+
+    fn handle_function_call(&mut self, function_call: &FunctionCall) -> FunctionResult {
+        let FunctionCall {
+            identifier: ID(TokenSpan { token, .. }),
+            ..
+        } = function_call;
+
+        let stored_variable = match self.global.get(token.value().into()) {
+            Ok(s) => s,
+            Err(e) => return Err(e),
+        };
+
+        let mut vars = vec![];
+
+        for expr in function_call.variables.0.clone() { 
+            let result = self.eval_expression(&expr);
+
+            vars.push(result);
+        }
+
+        match stored_variable {
+            Variable::Value(Value::Function(FunctionValue::Native(native))) => {
+                return native(self, vars)
+            }
+            // Variable::Value(Value::Function(FunctionValue::Native(native))) => {
+
+            // }
+            e => {
+                error!("Expected a Callable. Got {:?}", e);
+                return Err(Error::TypeError(format!(
+                    "Expected a Callable. Got {:?}",
+                    e
+                )))
+            }
         }
     }
 
@@ -143,17 +214,24 @@ impl Runtime {
             WriteItem::String(string) => {
                 trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
 
-                println!("{}  {}", "->".green().bold(), string)
+
+                println!("{}", string)
+            },
+            WriteItem::Expression(expression) => { 
+                let result = self.eval_expression(&expression);
+
+                println!("{}", result);
             }
             c => todo!("Add suppot for {:?}", c),
         }
     }
 
     fn handle_assignments(&mut self, assignment: &Assignment) {
-        let ParsedVariable {
-            id: ID(TokenSpan { token: id, .. }),
-            ..
-        } = assignment.variable.clone();
+        let id = match assignment.variable.clone() { 
+            ParsedVariable::Callable(c) => unreachable!(),
+            ParsedVariable::Readable(r) => r.clone()
+        }.0.token;
+
         let expression = &assignment.expression;
         let value = self.eval_expression(expression);
 

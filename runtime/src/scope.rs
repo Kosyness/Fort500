@@ -110,6 +110,9 @@ impl ScopeManager {
                     Token::Word(Word::Keyword(Keyword::Integer)) => {
                         self.set_unchecked(id, Variable::Value(Value::Integer(0)));
                     }
+                    Token::Word(Word::Keyword(Keyword::String)) => {
+                        self.set_unchecked(id, Variable::Value(Value::String("".into())));
+                    }
                     _ => todo!(),
                 }
             }
