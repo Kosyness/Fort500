@@ -7,9 +7,9 @@ use crate::{EvalResult, Runtime, errors::Error};
 use colored::Colorize;
 pub use truthy::Truthy;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Variable { 
-    Array(),
+    Array(Vec<Variable>),
     Value(Value),
     Null,
     Undefined,
@@ -19,7 +19,7 @@ pub enum Variable {
 impl Display for Variable { 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self { 
-            Self::Array() => todo!(),
+            Self::Array(values) => write!(f, "{:?}", values),
             Self::Null => write!(f, "null"),
             Self::Undefined => write!(f, "undefined"),
             Self::Value(v) => write!(f, "{}", v),
@@ -57,7 +57,7 @@ impl Truthy for Variable {
     
     fn truthy(&self) -> bool {
         match self { 
-            Variable::Array() => todo!(),
+            Variable::Array(v) => !v.is_empty(),
             Variable::Value(v) => v.truthy(),
             Variable::Null => false,
             Variable::Undefined => false,
@@ -69,7 +69,7 @@ impl Truthy for Variable {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value { 
     Integer(i64),
     Float(f64),
@@ -88,13 +88,19 @@ pub enum FunctionValue {
     Native(CallableFunction)
 }
 
+impl PartialEq for FunctionValue { 
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
 impl Debug for FunctionValue { 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "function() {{ [Native Function] }}")
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StringValue(pub String);
 
 impl Truthy for StringValue{ 

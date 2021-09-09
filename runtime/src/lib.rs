@@ -29,7 +29,7 @@ pub mod scope;
 pub mod variable;
 
 pub struct Runtime {
-    global: ScopeManager,
+    pub scopes: ScopeManager,
 }
 
 impl Debug for Runtime {
@@ -41,7 +41,7 @@ impl Debug for Runtime {
 impl Runtime {
     pub fn new() -> Self {
         Self {
-            global: ScopeManager::new(),
+            scopes: ScopeManager::new(),
         }
     }
 
@@ -57,7 +57,7 @@ impl Runtime {
     }
 
     pub fn add_function(&mut self, identifier: Identifier, function: CallableFunction) {
-        self.global.set_global(
+        self.scopes.set_global(
             identifier,
             Variable::Value(Value::Function(FunctionValue::Native(function))),
         )
@@ -83,7 +83,7 @@ impl Runtime {
                 Constant::Character(c) => Value::Char(c.token.value().into()),
             }),
             Expression::Variable(ParsedVariable::Readable(var)) => match var.clone().0.token {
-                Token::Word(Word::Identifier(id)) => self.global.get(id).unwrap(),
+                Token::Word(Word::Identifier(id)) => self.scopes.get(id).unwrap(),
                 _ => unreachable!(),
             },
             Expression::Variable(ParsedVariable::Callable(function_call)) => match self.handle_function_call(function_call) { 
@@ -123,7 +123,7 @@ impl Runtime {
 
     #[logfn_inputs(Trace)]
     fn handle_declarations(&mut self, declarations: &Declarations) {
-        self.global.declarations(declarations);
+        self.scopes.declarations(declarations);
     }
 
     #[logfn_inputs(Trace)]
@@ -159,7 +159,7 @@ impl Runtime {
             ..
         } = function_call;
 
-        let stored_variable = match self.global.get(token.value().into()) {
+        let stored_variable = match self.scopes.get(token.value().into()) {
             Ok(s) => s,
             Err(e) => return Err(e),
         };
@@ -240,7 +240,7 @@ impl Runtime {
             unreachable!();
         };
 
-        self.global.set(id, value).unwrap();
+        self.scopes.set(id, value).unwrap();
     }
 }
 
@@ -275,5 +275,5 @@ fn basic_program() {
 
     runtime.eval_program(program);
 
-    runtime.global.get("x".into());
+    runtime.scopes.get("x".into());
 }

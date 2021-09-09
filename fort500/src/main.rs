@@ -1,20 +1,46 @@
+use std::{env, process::exit, fs};
+
 use colored::*;
 use parser::{Program, cursor::Cursor};
 use read_input::prelude::*;
-use runtime::{Runtime, variable::{Truthy, Value, Variable}};
+use runtime::{Runtime, variable::{Truthy, Value, Variable}, errors::Error};
 use log::{ error, warn, info, };
 
-fn print_help() {
-    println!(
-        "{}",
-        r#"Type "--" in order to enter multiline mode, and then "--" to evaluate the expression"#
-            .blue()
-            .bold()
-    );
-}
-
-
 fn init_runtime(runtime: &mut Runtime) { 
+    runtime.add_function("eq".into(), |_, args| { 
+        if args.len() != 2 { 
+            return Err(Error::RuntimeError("InvalidArgumentLenght".into(), "Expected 2 Arguments".into()))
+        }
+
+        Ok(Some(Variable::Value(Value::Boolean(args[0] == args[1]))))
+    });
+
+    runtime.add_function("print".into(), |_, args| { 
+        
+        for arg in &args { 
+            print!("{}", arg);
+        }
+
+        Ok(None)
+    });
+
+    runtime.add_function("println".into(), |_, args| { 
+        for arg in &args { 
+            print!("{}", arg);
+        }
+
+        println!();
+
+        Ok(None)
+    });
+
+    runtime.add_function("input".into(), |_, args| { 
+        let mut line = input::<String>().get();
+        
+        let line = line.trim_end_matches("\n");
+        Ok(Some(Variable::Value(Value::String(line.to_string()))))
+    });
+
     runtime.add_function("Clear".into(), |_, _| { 
         print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
         Ok(None)
@@ -109,7 +135,14 @@ fn main() {
 
     init_runtime(&mut runtime);
 
-    // runtime.eval("string myinput myinput = FileToString(\"n\") if ( IsError(myinput) ) then write \"hi\" endif".into());
+    let args: Vec<String> = env::args().collect();
+    if args.len() >= 2 { 
+        let input = &args[1];
+
+        runtime.eval(fs::read_to_string(input).unwrap());
+
+        return;
+    }
 
     let mut multiline = false;
     let mut multilined_input = "".to_string();
@@ -153,7 +186,6 @@ fn main() {
         let line = input::<String>().get();
 
         match line.as_str() {
-            "?" => print_help(),
             "--" if !multiline => multiline = true,
             "--" if multiline => {
                 multiline = false;
