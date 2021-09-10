@@ -749,6 +749,10 @@ impl DeclarationType {
                 token: Token::Word(Word::Keyword(Keyword::Logical)),
                 ..
             })
+            | Some(TokenSpan {
+                token: Token::Word(Word::Keyword(Keyword::Var)),
+                ..
+            })
             | Some(TokenSpan { token: Token::Word(Word::Keyword(Keyword::String)), ..}) => {
                 let token = cursor.next().unwrap();
                 return Ok(Self(token));

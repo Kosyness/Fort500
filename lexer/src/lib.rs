@@ -145,7 +145,7 @@ impl<'chars> Lexer<'chars> {
 
         match character {
             ' ' | '\n' | '\t' => return self.handle_whitespace(),
-            '(' | ')' | ',' | ':' => return self.hadle_special(),
+            '(' | ')' | ',' | ':' | '[' | ']' => return self.handle_special(),
             '.' => return self.handle_dot(),
             '/' | '*' | '+' | '-' | '=' => return self.handle_operators(),
             '$' => return self.handle_comment(),
@@ -352,12 +352,14 @@ impl<'chars> Lexer<'chars> {
         }))
     }
 
-    fn hadle_special(&mut self) -> LexerResult<Token> {
+    fn handle_special(&mut self) -> LexerResult<Token> {
         Ok(Some(match self.input.next().unwrap() {
             '(' => Token::LParen,
             ')' => Token::RParen,
             ',' => Token::Comma,
             ':' => Token::Colon,
+            '[' => Token::LBracket,
+            ']' => Token::RBracket,
             // '=' => Token::AssignOp(AssignOp::Assign),
             _ => unreachable!("This should only be called with special as the next value"),
         }))

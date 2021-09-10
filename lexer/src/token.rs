@@ -20,6 +20,12 @@ pub enum Token {
     /// )
     RParen,
 
+    /// ]
+    RBracket,
+
+    /// [
+    LBracket,
+
     /// ,
     Comma,
 
@@ -61,6 +67,8 @@ impl Token {
             Self::Comma => ','.to_string(),
             Self::LParen => '('.to_string(),
             Self::RParen => ')'.to_string(),
+            Self::RBracket => ']'.to_string(),
+            Self::LBracket => '['.to_string(),
             Self::String(s) => s.to_string()
         }
     }
@@ -417,6 +425,9 @@ pub enum Keyword {
     
     #[strum(serialize = "string")]
     String,
+    
+    #[strum(serialize = "var")]
+    Var,
 
     #[strum(serialize = "record")]
     Record,
