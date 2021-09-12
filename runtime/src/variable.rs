@@ -1,150 +1,116 @@
-
-
-use std::fmt::{Debug, Display};
-
-use crate::{EvalResult, Runtime, errors::Error};
-
-use colored::Colorize;
+use std::{any::Any, fmt::{Debug, Display}, sync::{Arc, Mutex}};
+use hashbrown::HashMap;
+use derive_new::new;
 pub use truthy::Truthy;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Variable { 
-    Array(Vec<Variable>),
-    Value(Value),
-    Null,
-    Undefined,
-    Result(Result<Box<Variable>, String>),
+use crate::{Runtime, RuntimeError};
+
+#[derive(Debug, new)]
+pub struct Variable { 
+    pub id: Option<String>,
+    pub value: Arc<Mutex<Value>>,
+    #[new(default)]
+    pub constant: bool,
 }
 
 impl Display for Variable { 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { 
-            Self::Array(values) => write!(f, "{:?}", values),
-            Self::Null => write!(f, "null"),
-            Self::Undefined => write!(f, "undefined"),
-            Self::Value(v) => write!(f, "{}", v),
-            Self::Result(r) => match r { 
-                Ok(r) => write!(f, "{}", r),
-                Err(e) => write!(f, "err: {}", e)
-            }
-        }
-    }
-}
+        let value = self.value.lock().unwrap();
 
-impl Display for Value { 
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { 
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::String(b) => write!(f, "{}", b),
-            Value::Integer(b) => write!(f, "{}", b),
-            Value::Float(b) => write!(f, "{}", b),
-            Value::Char(b) => write!(f, "{}", b.0),
-            Value::Function(b) => write!(f, "{}", b),
-            Value::Structure() => write!(f, "struct {{}}"),
-        }
-    }
-}
-
-impl Display for FunctionValue { 
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { 
-            FunctionValue::Native(_) => write!(f, "function() {{ {} }}", "[native code]".italic())
+        match &*value { 
+            Value::String(s) => write!(f, "{}", s),
+            Value::Integer(i) => write!(f, "{}", i),
+            Value::Boolean(i) => write!(f, "{}", i),
+            Value::Float(i) => write!(f, "{}", i),
+            Value::Undefined => write!(f, "undefined"),
+            Value::Null => write!(f, "null"),
+            _ => todo!()
         }
     }
 }
 
 impl Truthy for Variable { 
-    
     fn truthy(&self) -> bool {
-        match self { 
-            Variable::Array(v) => !v.is_empty(),
-            Variable::Value(v) => v.truthy(),
-            Variable::Null => false,
-            Variable::Undefined => false,
-            Variable::Result(r) => match r { 
-                Ok(_) => true,
-                Err(_) => false
-            }
+        let value = self.value.clone();
+        let value = value.lock().unwrap();
+
+        value.truthy()
+    }
+}
+
+impl Default for Variable { 
+    fn default() -> Self {
+        Self { 
+            value: Arc::new(Mutex::new(Value::Undefined)),
+            id: None,
+            constant: false
         }
     }
+} 
+
+impl Variable { 
+    pub fn with_value(id: Option<String>, value: Value) -> Self { 
+        Self::new(id, Arc::new(Mutex::new(value)))
+    }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum Value { 
-    Integer(i64),
-    Float(f64),
-    Char(StringValue),
-    Boolean(bool),
-    Structure(),
-    Function(FunctionValue),
+    Native(Box<dyn Any>),
+    Array(Vec<Value>),
+    Null,
+    Undefined,
     String(String),
+    Integer(i64),
+    Boolean(bool),
+    Float(f64),
+    Map(HashMap<String, Box<Arc<Mutex<Value>>>>),
+    Function(FunctionValue)
 }
 
-pub type FunctionResult = Result<Option<Variable>, Error>;
-pub type CallableFunction = fn(&mut Runtime, Vec<Variable>) -> FunctionResult;
-
-#[derive(Clone)]
-pub enum FunctionValue { 
-    Native(CallableFunction)
-}
-
-impl PartialEq for FunctionValue { 
-    fn eq(&self, _other: &Self) -> bool {
-        false
-    }
-}
-
-impl Debug for FunctionValue { 
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "function() {{ [Native Function] }}")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StringValue(pub String);
-
-impl Truthy for StringValue{ 
-    fn truthy(&self) -> bool {
-        !self.0.is_empty() 
-    }
-}
-
-impl From<String> for StringValue { 
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl From<&str> for StringValue { 
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-impl Truthy for Value { 
+impl Truthy for Value{ 
     fn truthy(&self) -> bool {
         match self { 
-            Self::Integer(i) => i.truthy(),
-            Self::Float(f) => f.truthy(),
-            Self::Char(c) => c.truthy(),
-            Self::Boolean(b) => *b,
-            Self::String(s) => !s.is_empty(),
-            Self::Function(_) => true,
-            Self::Structure() => true,
+            Value::Undefined => false,
+            Value::Boolean(b) => *b,
+            Value::Array(c) => !c.is_empty(),
+            Value::Null => false,
+            Value::Float(f) => *f != 0.0,
+            Value::Integer(i) => *i != 0,
+            Value::Function(f) => todo!(),
+            Value::Native(n) => true,
+            Value::Map(m) => !m.is_empty(),
+            Value::String(s) => !s.is_empty()
         }
     }
 }
 
 impl Value { 
-    fn add(&self, rhs: &Self) -> EvalResult<Self> { 
-        match (self, rhs) { 
-            (Value::Integer(lhs), Value::Integer(rhs)) =>{
-                Ok(Value::Integer(lhs + rhs))
-            }
-            (Value::Float(lhs), Value::Float(rhs)) => { 
-                Ok(Value::Float(lhs + rhs))
-            }
-            _ => Err(Error::RuntimeError("OperatorError".to_string(), format!("Incompatable types {:?} with {:?}", self, rhs.clone())))
-        }
+    fn parse_variable(&mut self, variable: &Variable) -> Value { 
+        
     }
+}
+
+pub type FunctionResult = Result<Option<Variable>, RuntimeError>;
+pub type CallableFunction = fn(&mut Runtime, Vec<Arc<Mutex<Variable>>>) -> FunctionResult;
+
+pub enum FunctionValue { 
+    Native(CallableFunction)
+}
+
+impl Debug for FunctionValue { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+        // match self { 
+        //     // Self::Native(f) => f.typ
+        // }
+    }
+}
+
+#[test]
+fn test_native_value() { 
+    let mut variable = Variable::default();
+    variable.value = Arc::new(Mutex::new(Value::Native(Box::new("Hello, World"))));
+
+    println!("{:?}", variable);
 }

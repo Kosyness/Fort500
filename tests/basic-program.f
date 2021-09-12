@@ -6,10 +6,6 @@ string output
 print("What is your name?: ")
 name = input()
 
-if ( eq("easter egg", name) ) then 
-    println("You found the Easter Egg!")
-endif
-
 print("Welcome ", name, ". What is your age?: ")
 age = input()
 

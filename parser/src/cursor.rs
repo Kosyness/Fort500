@@ -41,6 +41,14 @@ impl Cursor {
         }
     }
 
+    pub fn peek_ahead(&self, ahead: usize) -> Option<TokenSpan> {
+        if self.tokens.len() - 1 < self.current_token + ahead { 
+            None
+        } else {
+            Some(self.tokens[self.current_token + ahead].clone())
+        }
+    }
+
     #[logfn_inputs(Trace)]
     #[logfn(Trace)]
     pub fn check_if(&self, ahead: usize, token: Token) -> bool { 

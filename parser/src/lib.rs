@@ -1199,6 +1199,13 @@ impl ExpressionList {
             }
         }
 
+        if expressions.len() == 1 { 
+            match expressions[0] { 
+                Expression::Empty => return Ok(Self(vec![])) ,
+                _ => {}
+            }
+        }
+
         Ok(Self(expressions))
     }
 }

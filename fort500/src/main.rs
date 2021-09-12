@@ -1,32 +1,28 @@
-use std::{env, process::exit, fs};
+use std::{env, fs, process::exit, sync::{Arc, Mutex}};
 
 use colored::*;
 use parser::{Program, cursor::Cursor};
 use read_input::prelude::*;
-use runtime::{Runtime, variable::{Truthy, Value, Variable}, errors::Error};
+use runtime::{Runtime, variable::{Truthy, Value, Variable}, RuntimeError, RuntimeResult};
 use log::{ error, warn, info, };
 
-fn init_runtime(runtime: &mut Runtime) { 
-    runtime.add_function("eq".into(), |_, args| { 
-        if args.len() != 2 { 
-            return Err(Error::RuntimeError("InvalidArgumentLenght".into(), "Expected 2 Arguments".into()))
-        }
-
-        Ok(Some(Variable::Value(Value::Boolean(args[0] == args[1]))))
-    });
-
-    runtime.add_function("print".into(), |_, args| { 
+fn init_runtime(runtime: &mut Runtime) {
+    runtime.add_function("print", |_, args| { 
         
         for arg in &args { 
-            print!("{}", arg);
+            let arg = arg.clone();
+            let arg = arg.lock().unwrap();
+            print!("{}", &*arg);
         }
 
         Ok(None)
     });
 
-    runtime.add_function("println".into(), |_, args| { 
+    runtime.add_function("println", |_, args| { 
         for arg in &args { 
-            print!("{}", arg);
+            let arg = arg.clone();
+            let arg = arg.lock().unwrap();
+            print!("{}", &*arg);
         }
 
         println!();
@@ -34,104 +30,25 @@ fn init_runtime(runtime: &mut Runtime) {
         Ok(None)
     });
 
-    runtime.add_function("input".into(), |_, args| { 
+    runtime.add_function("input", |_, args| { 
         let mut line = input::<String>().get();
         
         let line = line.trim_end_matches("\n");
-        Ok(Some(Variable::Value(Value::String(line.to_string()))))
+        Ok(Some(Variable::with_value(None, Value::String(line.to_string()))))
     });
 
-    runtime.add_function("Clear".into(), |_, _| { 
+    runtime.add_function("clear", |_, _| { 
         print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
         Ok(None)
     });
 
-    runtime.add_function("FileToString".into(), |_, args| {
-        let path = match args[0].clone() { 
-            Variable::Value(Value::String(s)) => s,
-            e => return Err(runtime::errors::Error::TypeError(format!("Expected String, got {:?}", e)))
-        };
 
-        match std::fs::read_to_string(path) { 
-            Ok(s) => Ok(Some(Variable::Value(Value::String(s)))),
-            Err(_) => Ok(Some(Variable::Result(Err("FileNotFound".into()))))
-        }
-    });
-
-    runtime.add_function("StringToFile".into(), |_, args| {
-        if args.len() != 2 { 
-            return Ok(Some(Variable::Result(Err("NotEnoughArguments".into()))));
-        }
-        
-        let path = match args[0].clone() { 
-            Variable::Value(Value::String(s)) => s,
-            e => return Err(runtime::errors::Error::TypeError(format!("Expected String, got {:?}", e)))
-        };
-
-        let data = match args[1].clone() { 
-            Variable::Value(Value::String(s)) => s,
-            e => return Err(runtime::errors::Error::TypeError(format!("Expected String, got {:?}", e)))
-        };
-
-        std::fs::write(path, data).unwrap();
-
-        Ok(Some(Variable::Value(Value::Boolean(true))))
-    });
-
-    runtime.add_function("IsError".into(), |_, args| {  
-        for arg in &args { 
-            if !arg.truthy() { 
-                return Ok(Some(Variable::Value(Value::Boolean(true))))
-            }
-        }
-
-        Ok(Some(Variable::Value(Value::Boolean(false))))
-    });
-
-    runtime.add_function("IsOk".into(), |_, args| {  
-        for arg in &args { 
-            if !arg.truthy() { 
-                return Ok(Some(Variable::Value(Value::Boolean(false))))
-            }
-        }
-
-        Ok(Some(Variable::Value(Value::Boolean(true))))
-    });
-
-    runtime.add_function("Unwrap".into(), |_ , args| { 
-        match args[0].clone() { 
-            Variable::Result(r) => match r { 
-                Ok(r) => Ok(Some(*r)),
-                Err(e) => panic!("Error unwrapping an error value {}", e)
-            },
-            e => Ok(Some(e))
-        }
-    });
-
-    runtime.add_function("UnwrapErr".into(), |_ , args| { 
-        match args[0].clone() { 
-            Variable::Result(r) => match r { 
-                Err(r) => Ok(Some(Variable::Value(Value::String(r)))),
-                Ok(e) => panic!("Tried to unwrap an error, got {}", e)
-            },
-            e => panic!("Tried to unwrap an error, got {}", e)
-        }
-    });
-
-    runtime.add_function("Concat".into(), |_ , args| { 
-        let mut output = "".to_string();
-
-        for arg in &args { 
-            output = format!("{}{}", output, arg)
-        }
-
-        Ok(Some(Variable::Value(Value::String(output))))
-    })
+    
 }
 
-fn main() {
+fn main() { 
     let _ = env_logger::try_init();
-    let mut runtime = Runtime::new();
+    let mut runtime = Runtime::default();
 
     init_runtime(&mut runtime);
 
@@ -181,34 +98,6 @@ fn main() {
         runtime.eval_program(program);
         multilined_input = "".into();
         multiline = false;
-        continue;
 
-        let line = input::<String>().get();
-
-        match line.as_str() {
-            "--" if !multiline => multiline = true,
-            "--" if multiline => {
-                multiline = false;
-                // let mut cursor = Cursor::from_str(mulit)
-                runtime.eval(multilined_input);
-                multilined_input = "".to_string();
-            }
-            line if multiline => multilined_input += format!("\n{}", line).as_str(),
-            line => runtime.eval(line.to_string()),
-        }
     }
 }
-
-// use std::io::{self, BufRead};
-
-// fn main() {
-//         let _ = env_logger::try_init();
-//     let mut runtime = Runtime::new();
-
-//     let stdin = io::stdin();
-//     print!("{} ", ">>>".blue().bold());
-//     for line in stdin.lock().lines() {
-//         let line = line.expect("Could not read line from standard in");
-//         print!("{} ", ">>>".blue().bold());
-//     }
-// }

@@ -32,6 +32,9 @@ pub enum Token {
     /// :
     Colon,
 
+    /// .
+    Dot,
+
     BinOp(BinOp),
     AssignOp(AssignOp),
 
@@ -50,6 +53,7 @@ impl Token {
                 Word::Keyword(keyword) => keyword.to_string(),
                 Word::Identifier(Identifier(value)) => value.to_string(),
             },
+            Self::Dot => '.'.to_string(),
             Self::Comment(value) => value.to_string(),
             Self::AssignOp(value) => value.to_string(),
             Self::BinOp(value) => match value.to_string().chars().next().unwrap() {
