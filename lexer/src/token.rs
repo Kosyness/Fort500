@@ -350,27 +350,29 @@ impl Word {
             }
         }
 
-        let underscore_matches = data.matches("_").count();
+        Ok(Self::Identifier(Identifier(data)))
 
-        if data.starts_with("_") {
-            if underscore_matches > 3 {
-                return Err(WordError::NotAWord);
-            }
-            if underscore_matches <= 3 && (!data.starts_with("__") && !data.ends_with("__")) {
-                if data.ends_with("_") {
-                    return Ok(Self::Identifier(Identifier(data)));
-                } else {
-                    return Err(WordError::PossibleIdentifier);
-                }
-            }
-            return Err(WordError::NotAWord);
-        }
+        // let underscore_matches = data.matches("_").count();
 
-        let first = data.chars().next().unwrap();
-        if first.is_alphabetic() && underscore_matches <= 1 && !data.ends_with("_") {
-            return Ok(Self::Identifier(Identifier(data)));
-        }
-        Err(WordError::NotAWord)
+        // if data.starts_with("_") {
+        //     if underscore_matches > 3 {
+        //         return Err(WordError::NotAWord);
+        //     }
+        //     if underscore_matches <= 3 && (!data.starts_with("__") && !data.ends_with("__")) {
+        //         if data.ends_with("_") {
+        //             return Ok(Self::Identifier(Identifier(data)));
+        //         } else {
+        //             return Err(WordError::PossibleIdentifier);
+        //         }
+        //     }
+        //     return Err(WordError::NotAWord);
+        // }
+
+        // let first = data.chars().next().unwrap();
+        // if first.is_alphabetic() && underscore_matches <= 1 && !data.ends_with("_") {
+        //     return Ok(Self::Identifier(Identifier(data)));
+        // }
+        // Err(WordError::NotAWord)
     }
 }
 

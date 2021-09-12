@@ -3,44 +3,44 @@ use std::{env, fs, process::exit, sync::{Arc, Mutex}};
 use colored::*;
 use parser::{Program, cursor::Cursor};
 use read_input::prelude::*;
-use runtime::{Runtime, variable::{Truthy, Value, Variable}, RuntimeError, RuntimeResult};
+use runtime::{Runtime, RuntimeError, RuntimeResult, variable::{HashMap, Truthy, Value, Variable}};
 use log::{ error, warn, info, };
 
 fn init_runtime(runtime: &mut Runtime) {
-    runtime.add_function("print", |_, args| { 
+    // runtime.add_function("print", |_, args| { 
         
-        for arg in &args { 
-            let arg = arg.clone();
-            let arg = arg.lock().unwrap();
-            print!("{}", &*arg);
-        }
+    //     for arg in &args { 
+    //         let arg = arg.clone();
+    //         let arg = arg.lock().unwrap();
+    //         print!("{}", &*arg);
+    //     }
 
-        Ok(None)
-    });
+    //     Ok(None)
+    // });
 
-    runtime.add_function("println", |_, args| { 
-        for arg in &args { 
-            let arg = arg.clone();
-            let arg = arg.lock().unwrap();
-            print!("{}", &*arg);
-        }
+    // runtime.add_function("println", |_, args| { 
+    //     for arg in &args { 
+    //         let arg = arg.clone();
+    //         let arg = arg.lock().unwrap();
+    //         print!("{}", &*arg);
+    //     }
 
-        println!();
+    //     println!();
 
-        Ok(None)
-    });
+    //     Ok(None)
+    // });
 
-    runtime.add_function("input", |_, args| { 
-        let mut line = input::<String>().get();
+    // runtime.add_function("input", |_, args| { 
+    //     let mut line = input::<String>().get();
         
-        let line = line.trim_end_matches("\n");
-        Ok(Some(Variable::with_value(None, Value::String(line.to_string()))))
-    });
+    //     let line = line.trim_end_matches("\n");
+    //     Ok(Some(Variable::with_value(None, Value::String(line.to_string()))))
+    // });
 
-    runtime.add_function("clear", |_, _| { 
-        print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
-        Ok(None)
-    });
+    // runtime.add_function("clear", |_, _| { 
+    //     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+    //     Ok(None)
+    // });
 
 
     
@@ -51,6 +51,10 @@ fn main() {
     let mut runtime = Runtime::default();
 
     init_runtime(&mut runtime);
+
+    let mut m = HashMap::default();
+    m.insert("hi".to_string(), Variable::arc(Some("hi".to_string()), Value::String("hello, wolrd".to_string())));
+    runtime.scopes.set(Variable::with_value(Some("my_map".to_string()), Value::Map(m)));
 
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 { 

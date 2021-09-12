@@ -1210,6 +1210,37 @@ impl ExpressionList {
     }
 }
 
+pub struct FunctionDeclaration { 
+    id: Option<ID>,
+    vars: VarDeclarations,
+    body: Option<Body>,
+}
+
+impl FunctionDeclaration {
+    fn parse(cursor: &mut Cursor) -> ParseResult<Self> { 
+        cursor.expect(Token::Word(Word::Keyword(Keyword::Function)))?;
+
+        let id = match cursor.peek() { 
+            Some(TokenSpan { token: Token::Word(Word::Identifier(id)), ..}) => Some(ID(cursor.next().unwrap())),
+            _ => None
+        };
+
+        cursor.expect(Token::LParen)?;
+        
+        let declarations = VarDeclarations::parse(cursor)?;
+
+        cursor.expect(Token::RParen)?;
+
+        todo!();
+
+        // let body = Body::parse_ignore_error_if(cursor, |token| { 
+        //     match token { 
+        //         TokenSpan { token: Token::Word(Word::Keyword(Keyword::))}
+        //     }
+        // })
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Expression {
     Empty,
@@ -1227,7 +1258,8 @@ pub enum Expression {
     Expression(Box<Expression>),
     /// Added since just stirngs on their own could be considered an expression
     String(TokenSpan),
-    Function(FunctionCall),
+    FunctionCall(FunctionCall),
+    AnonymousFunction(FunctionDeclaration), 
 }
 
 impl Expression {
@@ -1256,7 +1288,7 @@ impl Expression {
         if let Ok(_) = FunctionCall::parse(&mut cursor.clone()) { 
             let func = FunctionCall::parse(cursor).unwrap();
 
-            return Ok(Expression::Function(func));
+            return Ok(Expression::FunctionCall(func));
         }
 
         Ok(Expression::Empty)

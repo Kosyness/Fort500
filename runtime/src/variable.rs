@@ -1,5 +1,5 @@
 use std::{any::Any, fmt::{Debug, Display}, sync::{Arc, Mutex}};
-use hashbrown::HashMap;
+pub use hashbrown::HashMap;
 use derive_new::new;
 pub use truthy::Truthy;
 
@@ -24,7 +24,7 @@ impl Display for Variable {
             Value::Float(i) => write!(f, "{}", i),
             Value::Undefined => write!(f, "undefined"),
             Value::Null => write!(f, "null"),
-            _ => todo!()
+            e => write!(f, "{:?}", e)
         }
     }
 }
@@ -52,7 +52,13 @@ impl Variable {
     pub fn with_value(id: Option<String>, value: Value) -> Self { 
         Self::new(id, Arc::new(Mutex::new(value)))
     }
+
+    pub fn arc(id: Option<String>, value: Value) -> Arc<Mutex<Self>> { 
+        Arc::new(Mutex::new(Self::with_value(id, value)))
+    }
 }
+
+pub type Map = HashMap<String, Arc<Mutex<Variable>>>;
 
 #[derive(Debug)]
 pub enum Value { 
@@ -64,7 +70,7 @@ pub enum Value {
     Integer(i64),
     Boolean(bool),
     Float(f64),
-    Map(HashMap<String, Box<Arc<Mutex<Value>>>>),
+    Map(Map),
     Function(FunctionValue)
 }
 
@@ -85,13 +91,7 @@ impl Truthy for Value{
     }
 }
 
-impl Value { 
-    fn parse_variable(&mut self, variable: &Variable) -> Value { 
-        
-    }
-}
-
-pub type FunctionResult = Result<Option<Variable>, RuntimeError>;
+pub type FunctionResult = Result<Arc<Mutex<Variable>>, RuntimeError>;
 pub type CallableFunction = fn(&mut Runtime, Vec<Arc<Mutex<Variable>>>) -> FunctionResult;
 
 pub enum FunctionValue { 

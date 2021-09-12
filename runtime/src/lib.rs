@@ -1,6 +1,7 @@
-use std::{fmt::Debug, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}};
+use std::{borrow::{Borrow, BorrowMut}, default, fmt::Debug, net::{TcpListener, TcpStream}, ops::DerefMut, sync::{Arc, Mutex}};
 
 use colored::*;
+use hashbrown::HashMap;
 use log_derive::{ logfn, logfn_inputs };
 use log::{ error, warn, info, trace };
 
@@ -20,13 +21,131 @@ pub mod variable;
 use anyhow::{bail, Chain, Context, Error as AnyError};
 
 use serde::{Deserialize, Serialize};
-use variable::{CallableFunction, Value, Variable};
+use variable::{CallableFunction, Map, Value, Variable};
 
 use crate::variable::FunctionValue;
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Runtime {
-    scopes: ScopeManager,
+    pub scopes: ScopeManager,
+}
+
+impl Default for Runtime { 
+    fn default() -> Self {
+        let mut runtime = Self { 
+            scopes: Default::default()
+        };
+
+        // runtime.add_function("server_create", |_, args| { 
+        //     if args.len() != 1 { 
+        //         return Err()
+        //     }
+
+        //     TcpListener::bind(addr)
+        // });
+
+        runtime.add_function("map", |_, _| { 
+            Ok(Variable::arc(None, Value::Map(HashMap::default())))
+        });
+
+        runtime.add_function("map_get", |_, args| { 
+            if args.len() != 2 { 
+                return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 3", args.len())))
+            }
+
+            let map_var = args[0].clone();
+            let map_var_locked = map_var.lock().unwrap();
+            let map = map_var_locked.value.clone();
+            let map = map.lock().unwrap();
+            let map = if let Value::Map(v) = &*map {
+                v
+            } else { 
+                panic!()
+            };
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let key = if let Value::String(v) = &*key {
+                v
+            } else { 
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            Ok(match map.get(key) { 
+                Some(v) => v.clone(),
+                None => Variable::arc(None, Value::Undefined)
+            })
+        });
+
+        runtime.add_function("map_set", |_, args| { 
+            if args.len() != 3 { 
+                return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 3", args.len())))
+            }
+
+            let map_var = args[0].clone();
+            let map_var_locked = map_var.lock().unwrap();
+            let map = map_var_locked.value.clone();
+            let mut map = map.lock().unwrap();
+
+            let mut map = match map.deref_mut()  { 
+                    Value::Map(v) => v,
+                    _ => todo!()
+            };
+
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let key = if let Value::String(v) = &*key {
+                v.clone()
+            } else { 
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            map.insert(key.clone(), args[2].clone());
+            
+            println!("Map is {:?}", map);
+
+            Ok(Variable::arc(None, Value::Undefined))
+        });
+
+        // runtime.add_function("map_get", |_, args| { 
+        //     if args.len() != 2 { 
+        //         return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 2", args.len())))
+        //     }
+
+        //     let map_arc = args[0];
+        //     let mut map_var = map_arc.clone().lock().unwrap();
+        //     let map = map_var.value.clone();
+        //     let map = map.lock().unwrap();
+        //     let mut map = match &*map {
+        //         Value::Native(n) => match n.downcast::<Map>() { 
+        //             Some(map) => map,
+        //             None => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected HashMap")))
+        //         }
+        //         _ => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected HashMap")))
+        //     };
+
+        //     let key = &*args[1].lock().unwrap();
+        //     let key = match &*key.value.lock().unwrap() { 
+        //         Value::String(s) => s,
+        //         _ => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected String")))
+        //     };
+
+        //     let result = match map.get(key) {
+        //         Some(v) => v.clone(),
+        //         None => return Ok(Arc::new(Mutex::new(Variable::with_value(None, Value::Undefined))))
+        //     };
+
+        //     println!("Result is {:?}", result);
+        //     Ok(result)
+        // });
+
+        runtime
+    }
 }
 
 pub type RuntimeResult<T = ()> = Result<T, RuntimeError>;
@@ -90,7 +209,7 @@ impl Runtime {
                     }
                 },
                 Expression::String(s) => Value::String(s.token.value()),
-                Expression::Function(f) => return self.handle_function_call(&f),
+                Expression::FunctionCall(f) => return self.handle_function_call(&f),
                 Expression::Variable(ParsedVariable::Callable(f)) => return self.handle_function_call(&f),
                 e => todo!("Add support in Runtime for expression: {:?}", e),
             })),
@@ -136,10 +255,7 @@ impl Runtime {
         let value = &*value;
 
         match value { 
-            Value::Function(FunctionValue::Native(f)) => match f(self, vars)? { 
-                None => Ok(Arc::new(Mutex::new(Variable::new(None, Arc::new(Mutex::new(Value::Undefined)))))),
-                Some(v) => Ok(Arc::new(Mutex::new(v))),
-            },
+            Value::Function(FunctionValue::Native(f)) => f(self, vars),
             _ => todo!()
         }
     }
