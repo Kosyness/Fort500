@@ -1,18 +1,23 @@
-use std::{borrow::{Borrow, BorrowMut}, default, fmt::Debug, net::{TcpListener, TcpStream}, ops::DerefMut, sync::{Arc, Mutex}};
+use std::{any::Any, borrow::{Borrow, BorrowMut}, default, fmt::Debug, io::Write, net::{TcpListener, TcpStream}, ops::DerefMut, sync::{Arc, Mutex}};
 
 use colored::*;
 use hashbrown::HashMap;
-use log_derive::{ logfn, logfn_inputs };
-use log::{ error, warn, info, trace };
-
-
+use lazy_static::__Deref;
+use log::{error, info, trace, warn};
+use log_derive::{logfn, logfn_inputs};
 
 use lexer::{
     token::{Identifier, Token, Word},
     Lexer, Span, TokenError, TokenSpan,
 };
-use parser::{Assignment, BasicVarDeclaration, Body, Constant, Declaration, DeclarationType, Declarations, Expression, FunctionCall, ID, IfStatement, IoStatement, LabeledStatement, ParseError, Program, Statement, StatementList, VarDeclaration, Variable as ParsedVariable, WriteItem, WriteList, cursor::Cursor};
+use parser::{
+    cursor::Cursor, Assignment, BasicVarDeclaration, Body, Constant, Declaration, DeclarationType,
+    Declarations, Expression, FunctionCall, IfStatement, IoStatement, LabeledStatement, ParseError,
+    Program, Statement, StatementList, VarDeclaration, Variable as ParsedVariable, WriteItem,
+    WriteList, ID,
+};
 use scope::ScopeManager;
+use tokio::net::TcpSocket;
 use truthy::Truthy;
 
 pub mod scope;
@@ -30,27 +35,172 @@ pub struct Runtime {
     pub scopes: ScopeManager,
 }
 
-impl Default for Runtime { 
+impl Default for Runtime {
     fn default() -> Self {
-        let mut runtime = Self { 
-            scopes: Default::default()
+        let mut runtime = Self {
+            scopes: Default::default(),
         };
 
-        // runtime.add_function("server_create", |_, args| { 
-        //     // if args.len() != 1 { 
-        //     //     return Err()
-        //     // }
+        runtime.add_function("server_create", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
 
-        //     TcpListener::bind(addr)
-        // });
+            let addr = args[0].clone();
+            let addr = addr.lock().unwrap();
+            let addr = addr.value.clone();
+            let addr = addr.lock().unwrap();
+            let addr = if let Value::String(v) = &*addr {
+                v
+            } else {
+                todo!("Add error checking: ServerCreate(NOT String)")
+            };
 
-        runtime.add_function("map", |_, _| { 
+            let server = match TcpListener::bind(addr) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(RuntimeError::RuntimeError(
+                        "SocketError".to_string(),
+                        e.to_string(),
+                    ))
+                }
+            };
+
+            Ok(Variable::arc(None, Value::Native(Box::new(server))))
+        });
+
+        runtime.add_function("server_accept", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+            let var = args[0].clone();
+            let var = var.lock().unwrap();
+            let var = var.value.clone();
+            let mut var = var.lock().unwrap();
+
+            let mut var = match var.deref_mut() {
+                Value::Native(v) => v,
+                _ => todo!(),
+            };
+
+            let server = var
+                .downcast_ref::<TcpListener>()
+                .expect("Add error checking if the server is not a TpcListener");
+
+            let mut map = HashMap::default();
+
+            let (stream, addr) = server.accept().unwrap();
+            map.insert(
+                "stream".to_string(),
+                Variable::arc(None, Value::Native(Box::new(stream))),
+            );
+            map.insert(
+                "addr".to_string(),
+                Variable::arc(None, Value::Native(Box::new(addr))),
+            );
+
+            Ok(Variable::arc(None, Value::Map(map)))
+        });
+
+        runtime.add_function("server_send", |_, args| {
+            if args.len() != 2 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+
+            let var = args[0].clone();
+            let var = var.lock().unwrap();
+            let var = var.value.clone();
+            let mut var = var.lock().unwrap();
+
+            let mut var = match var.deref_mut() {
+                Value::Map(v) => v,
+                _ => todo!(),
+            };
+
+
+            let stream = var
+                .get(&"stream".to_string())
+                .expect("Add error checking in case the Stream does not exist")
+                .clone();
+            
+                // let stream = stream.clone();
+            let stream = stream.lock().unwrap();
+            let stream = stream.value.clone();
+            let mut stream = stream.lock().unwrap();
+            let mut stream = match stream.deref_mut() {
+                Value::Native(v) => v,
+                _ => todo!(),
+            };
+            let stream = stream
+                .downcast_mut::<TcpStream>()
+                .expect("Add error checking if the server is not a TcpStream");
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let contents = if let Value::String(v) = &*key {
+                v.clone()
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+            
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                contents.len(),
+                contents
+            );        
+
+            stream.write(response.as_bytes());
+
+            stream.flush().unwrap();
+
+            Ok(Variable::arc(None, Value::Undefined))
+        });
+
+        runtime.add_function("map", |_, _| {
             Ok(Variable::arc(None, Value::Map(HashMap::default())))
         });
 
-        runtime.add_function("map_get", |_, args| { 
-            if args.len() != 2 { 
-                return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 3", args.len())))
+
+        runtime.add_function("read_file", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+
+            let path = args[0].clone();
+            let path = path.lock().unwrap();
+            let path = path.value.clone();
+            let path = path.lock().unwrap();
+            let path = if let Value::String(v) = &*path {
+                v.clone()
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            let result = std::fs::read_to_string(path).unwrap();
+
+            Ok(Variable::arc(None, Value::String(result)))
+        });
+
+        runtime.add_function("map_get", |_, args| {
+            if args.len() != 2 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 3", args.len()),
+                ));
             }
 
             let map_var = args[0].clone();
@@ -59,7 +209,7 @@ impl Default for Runtime {
             let map = map.lock().unwrap();
             let map = if let Value::Map(v) = &*map {
                 v
-            } else { 
+            } else {
                 panic!()
             };
 
@@ -69,19 +219,22 @@ impl Default for Runtime {
             let key = key.lock().unwrap();
             let key = if let Value::String(v) = &*key {
                 v
-            } else { 
+            } else {
                 todo!("Add error checking: Map[NOT String]")
             };
 
-            Ok(match map.get(key) { 
+            Ok(match map.get(key) {
                 Some(v) => v.clone(),
-                None => Variable::arc(None, Value::Undefined)
+                None => Variable::arc(None, Value::Undefined),
             })
         });
 
-        runtime.add_function("map_set", |_, args| { 
-            if args.len() != 3 { 
-                return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 3", args.len())))
+        runtime.add_function("map_set", |_, args| {
+            if args.len() != 3 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 3", args.len()),
+                ));
             }
 
             let map_var = args[0].clone();
@@ -89,11 +242,10 @@ impl Default for Runtime {
             let map = map_var_locked.value.clone();
             let mut map = map.lock().unwrap();
 
-            let mut map = match map.deref_mut()  { 
-                    Value::Map(v) => v,
-                    _ => todo!()
+            let mut map = match map.deref_mut() {
+                Value::Map(v) => v,
+                _ => todo!(),
             };
-
 
             let key_var = args[1].clone();
             let key_var_locked = key_var.lock().unwrap();
@@ -101,19 +253,19 @@ impl Default for Runtime {
             let key = key.lock().unwrap();
             let key = if let Value::String(v) = &*key {
                 v.clone()
-            } else { 
+            } else {
                 todo!("Add error checking: Map[NOT String]")
             };
 
             map.insert(key.clone(), args[2].clone());
-            
+
             println!("Map is {:?}", map);
 
             Ok(Variable::arc(None, Value::Undefined))
         });
 
-        // runtime.add_function("map_get", |_, args| { 
-        //     if args.len() != 2 { 
+        // runtime.add_function("map_get", |_, args| {
+        //     if args.len() != 2 {
         //         return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 2", args.len())))
         //     }
 
@@ -122,7 +274,7 @@ impl Default for Runtime {
         //     let map = map_var.value.clone();
         //     let map = map.lock().unwrap();
         //     let mut map = match &*map {
-        //         Value::Native(n) => match n.downcast::<Map>() { 
+        //         Value::Native(n) => match n.downcast::<Map>() {
         //             Some(map) => map,
         //             None => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected HashMap")))
         //         }
@@ -130,7 +282,7 @@ impl Default for Runtime {
         //     };
 
         //     let key = &*args[1].lock().unwrap();
-        //     let key = match &*key.value.lock().unwrap() { 
+        //     let key = match &*key.value.lock().unwrap() {
         //         Value::String(s) => s,
         //         _ => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected String")))
         //     };
@@ -151,8 +303,6 @@ impl Default for Runtime {
 pub type RuntimeResult<T = ()> = Result<T, RuntimeError>;
 
 impl Runtime {
-    
-    
     #[logfn(Trace)]
     pub fn eval(&mut self, input: String) -> RuntimeResult {
         let mut cursor = match Cursor::from_str(input.clone()) {
@@ -167,18 +317,18 @@ impl Runtime {
 
         self.eval_program(program)
     }
-    
-    
+
     #[logfn(Trace)]
     pub fn eval_program(&mut self, program: Program) -> RuntimeResult {
         self.handle_program(program)?;
         Ok(Default::default())
     }
 
-    
-    
     #[logfn(Trace)]
-    pub fn eval_expression(&mut self, expression: &Expression) -> RuntimeResult<Arc<Mutex<Variable>>> {
+    pub fn eval_expression(
+        &mut self,
+        expression: &Expression,
+    ) -> RuntimeResult<Arc<Mutex<Variable>>> {
         Ok(Arc::new(Mutex::new(Variable::new(
             None,
             Arc::new(Mutex::new(match expression {
@@ -207,27 +357,35 @@ impl Runtime {
                             )))
                         }
                     }
-                },
+                }
                 Expression::String(s) => Value::String(s.token.value()),
                 Expression::FunctionCall(f) => return self.handle_function_call(&f),
-                Expression::Variable(ParsedVariable::Callable(f)) => return self.handle_function_call(&f),
+                Expression::Variable(ParsedVariable::Callable(f)) => {
+                    return self.handle_function_call(&f)
+                }
                 e => todo!("Add support in Runtime for expression: {:?}", e),
             })),
         ))))
     }
 
-    
-    
     #[logfn(Trace)]
-    pub fn add_function<S: ToString + Debug>(&mut self, identifier: S, function: CallableFunction) -> RuntimeResult { 
-        self.scopes.set(Variable::new(Some(identifier.to_string()), Arc::new(Mutex::new(Value::Function(FunctionValue::Native(function))))));
+    pub fn add_function<S: ToString + Debug>(
+        &mut self,
+        identifier: S,
+        function: CallableFunction,
+    ) -> RuntimeResult {
+        self.scopes.set(Variable::new(
+            Some(identifier.to_string()),
+            Arc::new(Mutex::new(Value::Function(FunctionValue::Native(function)))),
+        ));
         Ok(())
     }
 
-    
-    
     #[logfn(Trace)]
-    fn handle_function_call(&mut self, function: &FunctionCall) -> RuntimeResult<Arc<Mutex<Variable>>> { 
+    fn handle_function_call(
+        &mut self,
+        function: &FunctionCall,
+    ) -> RuntimeResult<Arc<Mutex<Variable>>> {
         let FunctionCall {
             identifier: ID(TokenSpan { token, .. }),
             ..
@@ -240,7 +398,7 @@ impl Runtime {
 
         let mut vars = vec![];
 
-        for expr in function.variables.0.clone() { 
+        for expr in function.variables.0.clone() {
             let result = self.eval_expression(&expr)?;
 
             vars.push(result);
@@ -254,14 +412,12 @@ impl Runtime {
         let value = value.lock().unwrap();
         let value = &*value;
 
-        match value { 
+        match value {
             Value::Function(FunctionValue::Native(f)) => f(self, vars),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_statements(&mut self, statements: &StatementList) -> RuntimeResult {
         for statement in &statements.0 {
@@ -271,33 +427,26 @@ impl Runtime {
         Ok(())
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_labeled_statement(&mut self, statement: &LabeledStatement) -> RuntimeResult {
         self.handle_statement(&statement.statement);
         Ok(())
     }
 
-    
     #[logfn(Trace)]
     fn handle_statement(&mut self, statement: &Statement) -> RuntimeResult {
         match statement {
             Statement::Io(IoStatement::Write(write)) => self.handle_write_list(write),
             Statement::If(if_statement) => self.handle_if_statement(if_statement),
             Statement::Assignment(assignment) => self.handle_assignments(assignment),
-            Statement::FunctionCall(f) => {
-                match self.handle_function_call(f) {
-                    Ok(_) => Ok(()),
-                    Err(e) => return Err(e)
-                }
-            }
+            Statement::FunctionCall(f) => match self.handle_function_call(f) {
+                Ok(_) => Ok(()),
+                Err(e) => return Err(e),
+            },
             c => todo!("Add support for statement {:?}", c),
         }
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_if_statement(&mut self, statement: &IfStatement) -> RuntimeResult {
         let var = self.eval_expression(&statement.expression)?;
@@ -314,7 +463,6 @@ impl Runtime {
         Ok(())
     }
 
-    
     #[logfn(Trace)]
     fn handle_write_list(&mut self, list: &WriteList) -> RuntimeResult {
         for item in &list.0 {
@@ -324,8 +472,6 @@ impl Runtime {
         Ok(())
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_write_item(&mut self, item: &WriteItem) -> RuntimeResult {
         match item {
@@ -333,8 +479,8 @@ impl Runtime {
                 trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
 
                 println!("{}  {}", "->".green(), string)
-            },
-            WriteItem::Expression(expression) => { 
+            }
+            WriteItem::Expression(expression) => {
                 let result = self.eval_expression(&expression)?;
                 let result = result.lock().unwrap();
 
@@ -346,14 +492,14 @@ impl Runtime {
         Ok(())
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_assignments(&mut self, assignment: &Assignment) -> RuntimeResult {
-        let id = match assignment.variable.clone() { 
+        let id = match assignment.variable.clone() {
             ParsedVariable::Callable(c) => unreachable!(),
-            ParsedVariable::Readable(r) => r.clone()
-        }.0.token;
+            ParsedVariable::Readable(r) => r.clone(),
+        }
+        .0
+        .token;
 
         let expression = &assignment.expression;
         let var = self.eval_expression(expression)?;
@@ -373,21 +519,17 @@ impl Runtime {
         Ok(())
     }
 
-    
     #[logfn(Trace)]
     fn handle_program(&mut self, program: Program) -> RuntimeResult {
         self.handle_body(&program.body)
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_body(&mut self, body: &Body) -> RuntimeResult {
         self.handle_declarations(&body.declarations)?;
         self.handle_statements(&body.statements)
     }
 
-    
     #[logfn(Trace)]
     fn handle_declarations(&mut self, declarations: &Declarations) -> RuntimeResult {
         for declaration in &declarations.0 {
@@ -397,8 +539,6 @@ impl Runtime {
         Ok(Default::default())
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_declaration(&mut self, declaration: &Declaration) -> RuntimeResult {
         match declaration {
@@ -408,8 +548,6 @@ impl Runtime {
         Ok(Default::default())
     }
 
-    
-    
     #[logfn(Trace)]
     fn handle_basic_declaration(&mut self, declaration: &BasicVarDeclaration) -> RuntimeResult {
         let BasicVarDeclaration {
@@ -438,7 +576,6 @@ impl Runtime {
 fn test_runtime() {
     let _ = env_logger::try_init();
     let mut runtime = Runtime::default();
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

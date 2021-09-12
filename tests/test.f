@@ -1,13 +1,10 @@
-var my_custom_map, output, inner_map
+var server, contents
 
-inner_map = map()
+contents = read_file("tests/project.html")
 
-map_set(inner_map, "world", 123456789)
+server = server_create("0.0.0.0:8080")
+client = server_accept(server)
 
-my_custom_map = map()
+write client
 
-map_set(my_custom_map, "hello", inner_map)
-
-output = map_get(my_custom_map, "hello")
-
-write output
+server_send(client, contents)
