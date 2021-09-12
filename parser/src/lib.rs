@@ -1210,6 +1210,7 @@ impl ExpressionList {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionDeclaration { 
     id: Option<ID>,
     vars: VarDeclarations,
