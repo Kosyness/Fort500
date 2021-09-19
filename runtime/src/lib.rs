@@ -1,238 +1,512 @@
-use std::fmt::Debug;
-
-use errors::Error;
-
-use parser::{
-    Assignment, Body, Constant, Declarations, Expression, FunctionCall, IfStatement, IoStatement,
-    LabeledStatement, Program, Statement, StatementList, Variable as ParsedVariable, WriteItem,
-    WriteList, ID,
-};
-
-use log::{error, info, trace, warn};
-use log_derive::logfn_inputs;
+use std::{any::Any, borrow::{Borrow, BorrowMut}, default, fmt::Debug, io::Write, net::{TcpListener, TcpStream}, ops::DerefMut, sync::{Arc, Mutex}};
 
 use colored::*;
+use hashbrown::HashMap;
+use lazy_static::__Deref;
+use log::{error, info, trace, warn};
+use log_derive::{logfn, logfn_inputs};
 
 use lexer::{
     token::{Identifier, Token, Word},
-    Lexer, TokenSpan,
+    Lexer, Span, TokenError, TokenSpan,
 };
-use parser::cursor::Cursor;
+use parser::{
+    cursor::Cursor, Assignment, BasicVarDeclaration, Body, Constant, Declaration, DeclarationType,
+    Declarations, Expression, FunctionCall, IfStatement, IoStatement, LabeledStatement, ParseError,
+    Program, Statement, StatementList, VarDeclaration, Variable as ParsedVariable, WriteItem,
+    WriteList, ID,
+};
 use scope::ScopeManager;
-pub use truthy::Truthy;
-use variable::{CallableFunction, FunctionResult, FunctionValue, Value, Variable};
+use tokio::net::TcpSocket;
+use truthy::Truthy;
 
-pub type EvalResult<T> = Result<T, Error>;
-
-pub mod errors;
 pub mod scope;
 pub mod variable;
 
+use anyhow::{bail, Chain, Context, Error as AnyError};
+
+use serde::{Deserialize, Serialize};
+use variable::{CallableFunction, Map, Value, Variable};
+
+use crate::variable::FunctionValue;
+
+#[derive(Debug)]
 pub struct Runtime {
     pub scopes: ScopeManager,
 }
 
-impl Debug for Runtime {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Runtime {{}}")
+impl Default for Runtime {
+    fn default() -> Self {
+        let mut runtime = Self {
+            scopes: Default::default(),
+        };
+
+        runtime.add_function("server_create", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+
+            let addr = args[0].clone();
+            let addr = addr.lock().unwrap();
+            let addr = addr.value.clone();
+            let addr = addr.lock().unwrap();
+            let addr = if let Value::String(v) = &*addr {
+                v
+            } else {
+                todo!("Add error checking: ServerCreate(NOT String)")
+            };
+
+            let server = match TcpListener::bind(addr) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(RuntimeError::RuntimeError(
+                        "SocketError".to_string(),
+                        e.to_string(),
+                    ))
+                }
+            };
+
+            Ok(Variable::arc(None, Value::Native(Box::new(server))))
+        });
+
+        runtime.add_function("server_accept", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+            let var = args[0].clone();
+            let var = var.lock().unwrap();
+            let var = var.value.clone();
+            let mut var = var.lock().unwrap();
+
+            let mut var = match var.deref_mut() {
+                Value::Native(v) => v,
+                _ => todo!(),
+            };
+
+            let server = var
+                .downcast_ref::<TcpListener>()
+                .expect("Add error checking if the server is not a TpcListener");
+
+            let mut map = HashMap::default();
+
+            let (stream, addr) = server.accept().unwrap();
+            map.insert(
+                "stream".to_string(),
+                Variable::arc(None, Value::Native(Box::new(stream))),
+            );
+            map.insert(
+                "addr".to_string(),
+                Variable::arc(None, Value::Native(Box::new(addr))),
+            );
+
+            Ok(Variable::arc(None, Value::Map(map)))
+        });
+
+        runtime.add_function("server_send", |_, args| {
+            if args.len() != 2 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+
+            let var = args[0].clone();
+            let var = var.lock().unwrap();
+            let var = var.value.clone();
+            let mut var = var.lock().unwrap();
+
+            let mut var = match var.deref_mut() {
+                Value::Map(v) => v,
+                _ => todo!(),
+            };
+
+
+            let stream = var
+                .get(&"stream".to_string())
+                .expect("Add error checking in case the Stream does not exist")
+                .clone();
+            
+                // let stream = stream.clone();
+            let stream = stream.lock().unwrap();
+            let stream = stream.value.clone();
+            let mut stream = stream.lock().unwrap();
+            let mut stream = match stream.deref_mut() {
+                Value::Native(v) => v,
+                _ => todo!(),
+            };
+            let stream = stream
+                .downcast_mut::<TcpStream>()
+                .expect("Add error checking if the server is not a TcpStream");
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let contents = if let Value::String(v) = &*key {
+                v.clone()
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+            
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                contents.len(),
+                contents
+            );        
+
+            stream.write(response.as_bytes());
+
+            stream.flush().unwrap();
+
+            Ok(Variable::arc(None, Value::Undefined))
+        });
+
+        runtime.add_function("map", |_, _| {
+            Ok(Variable::arc(None, Value::Map(HashMap::default())))
+        });
+
+
+        runtime.add_function("read_file", |_, args| {
+            if args.len() != 1 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 1", args.len()),
+                ));
+            }
+
+            let path = args[0].clone();
+            let path = path.lock().unwrap();
+            let path = path.value.clone();
+            let path = path.lock().unwrap();
+            let path = if let Value::String(v) = &*path {
+                v.clone()
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            let result = std::fs::read_to_string(path).unwrap();
+
+            Ok(Variable::arc(None, Value::String(result)))
+        });
+
+        runtime.add_function("map_get", |_, args| {
+            if args.len() != 2 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 3", args.len()),
+                ));
+            }
+
+            let map_var = args[0].clone();
+            let map_var_locked = map_var.lock().unwrap();
+            let map = map_var_locked.value.clone();
+            let map = map.lock().unwrap();
+            let map = if let Value::Map(v) = &*map {
+                v
+            } else {
+                panic!()
+            };
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let key = if let Value::String(v) = &*key {
+                v
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            Ok(match map.get(key) {
+                Some(v) => v.clone(),
+                None => Variable::arc(None, Value::Undefined),
+            })
+        });
+
+        runtime.add_function("map_set", |_, args| {
+            if args.len() != 3 {
+                return Err(RuntimeError::RuntimeError(
+                    "NotEnoughArguments".into(),
+                    format!("Got {}, expected 3", args.len()),
+                ));
+            }
+
+            let map_var = args[0].clone();
+            let map_var_locked = map_var.lock().unwrap();
+            let map = map_var_locked.value.clone();
+            let mut map = map.lock().unwrap();
+
+            let mut map = match map.deref_mut() {
+                Value::Map(v) => v,
+                _ => todo!(),
+            };
+
+            let key_var = args[1].clone();
+            let key_var_locked = key_var.lock().unwrap();
+            let key = key_var_locked.value.clone();
+            let key = key.lock().unwrap();
+            let key = if let Value::String(v) = &*key {
+                v.clone()
+            } else {
+                todo!("Add error checking: Map[NOT String]")
+            };
+
+            map.insert(key.clone(), args[2].clone());
+
+            println!("Map is {:?}", map);
+
+            Ok(Variable::arc(None, Value::Undefined))
+        });
+
+        // runtime.add_function("map_get", |_, args| {
+        //     if args.len() != 2 {
+        //         return Err(RuntimeError::RuntimeError("NotEnoughArguments".into(), format!("Got {}, expected 2", args.len())))
+        //     }
+
+        //     let map_arc = args[0];
+        //     let mut map_var = map_arc.clone().lock().unwrap();
+        //     let map = map_var.value.clone();
+        //     let map = map.lock().unwrap();
+        //     let mut map = match &*map {
+        //         Value::Native(n) => match n.downcast::<Map>() {
+        //             Some(map) => map,
+        //             None => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected HashMap")))
+        //         }
+        //         _ => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected HashMap")))
+        //     };
+
+        //     let key = &*args[1].lock().unwrap();
+        //     let key = match &*key.value.lock().unwrap() {
+        //         Value::String(s) => s,
+        //         _ => return Err(RuntimeError::RuntimeError("InvalidType".into(), format!("Expected String")))
+        //     };
+
+        //     let result = match map.get(key) {
+        //         Some(v) => v.clone(),
+        //         None => return Ok(Arc::new(Mutex::new(Variable::with_value(None, Value::Undefined))))
+        //     };
+
+        //     println!("Result is {:?}", result);
+        //     Ok(result)
+        // });
+
+        runtime
     }
 }
 
+pub type RuntimeResult<T = ()> = Result<T, RuntimeError>;
+
 impl Runtime {
-    pub fn new() -> Self {
-        Self {
-            scopes: ScopeManager::new(),
-        }
+    #[logfn(Trace)]
+    pub fn eval(&mut self, input: String) -> RuntimeResult {
+        let mut cursor = match Cursor::from_str(input.clone()) {
+            Ok(c) => c,
+            Err(e) => return Err(RuntimeError::LexerError(e)),
+        };
+
+        let program = match Program::parse(&mut cursor) {
+            Ok(p) => p,
+            Err(e) => return Err(RuntimeError::ParseError(e)),
+        };
+
+        self.eval_program(program)
     }
 
-    pub fn eval(&mut self, input: String) {
-        let mut lexer = Lexer::new(input.chars().peekable());
-
-        let tokens = lexer.lex().expect("Failed to evaluate a string");
-
-        let mut cursor = Cursor::new(tokens);
-        let program = Program::parse(&mut cursor).expect("Failed to parse program from input");
-
-        self.eval_program(program);
+    #[logfn(Trace)]
+    pub fn eval_program(&mut self, program: Program) -> RuntimeResult {
+        self.handle_program(program)?;
+        Ok(Default::default())
     }
 
-    pub fn add_function(&mut self, identifier: Identifier, function: CallableFunction) {
-        self.scopes.set_global(
-            identifier,
-            Variable::Value(Value::Function(FunctionValue::Native(function))),
-        )
-    }
-
-    #[logfn_inputs(Trace)]
-    pub fn eval_program(&mut self, program: Program) {
-        // TODO
-        // First handle the subprograms in order to add the
-        // Function declarations to the global scope
-        self.handle_body(&program.body);
-    }
-
-    fn eval_expression(&mut self, expression: &Expression) -> Variable {
-        match expression {
-            Expression::Constant(c) => Variable::Value(match c {
-                Constant::Integer(i) => Value::Integer(i.token.value().parse().unwrap()),
-                Constant::Real(r) => Value::Float(r.token.value().parse().unwrap()),
-                Constant::Boolean(b) => Value::Boolean(match b.token {
-                    Token::Boolean(b) => b,
-                    _ => unreachable!(),
-                }),
-                Constant::Character(c) => Value::Char(c.token.value().into()),
-            }),
-            Expression::Variable(ParsedVariable::Readable(var)) => match var.clone().0.token {
-                Token::Word(Word::Identifier(id)) => self.scopes.get(id).unwrap(),
-                _ => unreachable!(),
-            },
-            Expression::Variable(ParsedVariable::Callable(function_call)) => match self.handle_function_call(function_call) { 
-                Ok(var) => match var { 
-                    Some(v) => v,
-                    None => Variable::Undefined
+    #[logfn(Trace)]
+    pub fn eval_expression(
+        &mut self,
+        expression: &Expression,
+    ) -> RuntimeResult<Arc<Mutex<Variable>>> {
+        Ok(Arc::new(Mutex::new(Variable::new(
+            None,
+            Arc::new(Mutex::new(match expression {
+                Expression::Constant(c) => match c {
+                    Constant::Boolean(b) => Value::Boolean(match b.token {
+                        Token::Boolean(b) => b,
+                        _ => unreachable!(),
+                    }),
+                    Constant::Character(c) => Value::String(c.token.value()),
+                    Constant::Integer(i) => Value::Integer(match i.token {
+                        Token::Integer(i) => i,
+                        _ => unreachable!(),
+                    }),
+                    Constant::Real(f) => Value::Float(match f.token {
+                        Token::Float(f) => f,
+                        _ => unreachable!(),
+                    }),
                 },
-                Err(e) => {
-                    error!("RuntimeError: called function threw an exception: {:?}", e);
-                    Variable::Undefined
+                Expression::Variable(ParsedVariable::Readable(c)) => {
+                    return match self.scopes.get(c.0.token.value()) {
+                        Some(v) => return Ok(v),
+                        None => {
+                            return Err(RuntimeError::ReferenceError(format!(
+                                "{} is not defined",
+                                c.0.token.value()
+                            )))
+                        }
+                    }
                 }
-            }
-            Expression::Function(f) => match self.handle_function_call(f) { 
-                Ok(r) => match r {
-                    Some(s) => s,
-                    None => Variable::Undefined
-                },
-                Err(e) => {
-                    error!("FunctionCallError: ${:?}", e);
-                    Variable::Undefined
+                Expression::String(s) => Value::String(s.token.value()),
+                Expression::FunctionCall(f) => return self.handle_function_call(&f),
+                Expression::Variable(ParsedVariable::Callable(f)) => {
+                    return self.handle_function_call(&f)
                 }
-            }
-            Expression::String(s) => Variable::Value(Value::String(s.token.value())),
-            Expression::Empty => {
-                warn!("Empty Expression");
-                Variable::Undefined
-            }
-            e => todo!("Implement Expression Handling for {:?}", e),
-        }
+                e => todo!("Add support in Runtime for expression: {:?}", e),
+            })),
+        ))))
     }
 
-    #[logfn_inputs(Trace)]
-    fn handle_body(&mut self, body: &Body) {
-        self.handle_declarations(&body.declarations);
-        self.handle_statements(&body.statements);
+    #[logfn(Trace)]
+    pub fn add_function<S: ToString + Debug>(
+        &mut self,
+        identifier: S,
+        function: CallableFunction,
+    ) -> RuntimeResult {
+        self.scopes.set(Variable::new(
+            Some(identifier.to_string()),
+            Arc::new(Mutex::new(Value::Function(FunctionValue::Native(function)))),
+        ));
+        Ok(())
     }
 
-    #[logfn_inputs(Trace)]
-    fn handle_declarations(&mut self, declarations: &Declarations) {
-        self.scopes.declarations(declarations);
-    }
-
-    #[logfn_inputs(Trace)]
-    fn handle_statements(&mut self, statements: &StatementList) {
-        for statement in &statements.0 {
-            self.handle_labeled_statement(statement);
-        }
-    }
-
-    #[logfn_inputs(Trace)]
-    fn handle_labeled_statement(&mut self, statement: &LabeledStatement) {
-        self.handle_statement(&statement.statement);
-    }
-
-    #[logfn_inputs(Trace)]
-    fn handle_statement(&mut self, statement: &Statement) {
-        match statement {
-            Statement::Io(IoStatement::Write(write)) => self.handle_write_list(write),
-            Statement::If(if_statement) => self.handle_if_statement(if_statement),
-            Statement::Assignment(assignment) => self.handle_assignments(assignment),
-            Statement::FunctionCall(f) => {
-                match self.handle_function_call(f) {
-                    _ => {} // Err(e) => //println!("{}", e.n)
-                }
-            }
-            c => todo!("Add support for statement {:?}", c),
-        }
-    }
-
-    fn handle_function_call(&mut self, function_call: &FunctionCall) -> FunctionResult {
+    #[logfn(Trace)]
+    fn handle_function_call(
+        &mut self,
+        function: &FunctionCall,
+    ) -> RuntimeResult<Arc<Mutex<Variable>>> {
         let FunctionCall {
             identifier: ID(TokenSpan { token, .. }),
             ..
-        } = function_call;
+        } = function;
 
-        let stored_variable = match self.scopes.get(token.value().into()) {
-            Ok(s) => s,
-            Err(e) => return Err(e),
+        let stored_variable = match self.scopes.get(token.value()) {
+            Some(s) => s,
+            None => todo!(),
         };
 
         let mut vars = vec![];
 
-        for expr in function_call.variables.0.clone() { 
-            let result = self.eval_expression(&expr);
+        for expr in function.variables.0.clone() {
+            let result = self.eval_expression(&expr)?;
 
             vars.push(result);
         }
 
-        match stored_variable {
-            Variable::Value(Value::Function(FunctionValue::Native(native))) => {
-                return native(self, vars)
-            }
-            // Variable::Value(Value::Function(FunctionValue::Native(native))) => {
+        let variable = stored_variable.clone();
+        let variable = variable.lock().unwrap();
+        let variable = &*variable;
 
-            // }
-            e => {
-                error!("Expected a Callable. Got {:?}", e);
-                return Err(Error::TypeError(format!(
-                    "Expected a Callable. Got {:?}",
-                    e
-                )))
-            }
+        let value = variable.value.clone();
+        let value = value.lock().unwrap();
+        let value = &*value;
+
+        match value {
+            Value::Function(FunctionValue::Native(f)) => f(self, vars),
+            _ => todo!(),
         }
     }
 
-    fn handle_if_statement(&mut self, statement: &IfStatement) {
-        let var = self.eval_expression(&statement.expression);
+    #[logfn(Trace)]
+    fn handle_statements(&mut self, statements: &StatementList) -> RuntimeResult {
+        for statement in &statements.0 {
+            self.handle_labeled_statement(statement);
+        }
 
-        if var.truthy() {
+        Ok(())
+    }
+
+    #[logfn(Trace)]
+    fn handle_labeled_statement(&mut self, statement: &LabeledStatement) -> RuntimeResult {
+        self.handle_statement(&statement.statement);
+        Ok(())
+    }
+
+    #[logfn(Trace)]
+    fn handle_statement(&mut self, statement: &Statement) -> RuntimeResult {
+        match statement {
+            Statement::Io(IoStatement::Write(write)) => self.handle_write_list(write),
+            Statement::If(if_statement) => self.handle_if_statement(if_statement),
+            Statement::Assignment(assignment) => self.handle_assignments(assignment),
+            Statement::FunctionCall(f) => match self.handle_function_call(f) {
+                Ok(_) => Ok(()),
+                Err(e) => return Err(e),
+            },
+            c => todo!("Add support for statement {:?}", c),
+        }
+    }
+
+    #[logfn(Trace)]
+    fn handle_if_statement(&mut self, statement: &IfStatement) -> RuntimeResult {
+        let var = self.eval_expression(&statement.expression)?;
+
+        let var = var.lock().unwrap();
+        if (&*var).truthy() {
             self.handle_body(&statement.body);
         } else if let Some(_else_body) = &statement.tail {
             todo!("Handle Else Statement");
         } else {
             // do nothing
         }
+
+        Ok(())
     }
 
-    #[logfn_inputs(Trace)]
-    fn handle_write_list(&mut self, list: &WriteList) {
+    #[logfn(Trace)]
+    fn handle_write_list(&mut self, list: &WriteList) -> RuntimeResult {
         for item in &list.0 {
-            self.handle_write_item(item);
+            self.handle_write_item(item)?;
         }
+
+        Ok(())
     }
 
-    #[logfn_inputs(Trace)]
-    fn handle_write_item(&mut self, item: &WriteItem) {
+    #[logfn(Trace)]
+    fn handle_write_item(&mut self, item: &WriteItem) -> RuntimeResult {
         match item {
             WriteItem::String(string) => {
                 trace!(target: "runtime::write_item", "Printing a String to the Display '{}'", string.magenta().bold());
 
                 println!("{}  {}", "->".green(), string)
-            },
-            WriteItem::Expression(expression) => { 
-                let result = self.eval_expression(&expression);
+            }
+            WriteItem::Expression(expression) => {
+                let result = self.eval_expression(&expression)?;
+                let result = result.lock().unwrap();
 
                 println!("{}  {}", "->".green(), result);
             }
             c => todo!("Add suppot for {:?}", c),
         }
+
+        Ok(())
     }
 
-    fn handle_assignments(&mut self, assignment: &Assignment) {
-        let id = match assignment.variable.clone() { 
+    #[logfn(Trace)]
+    fn handle_assignments(&mut self, assignment: &Assignment) -> RuntimeResult {
+        let id = match assignment.variable.clone() {
             ParsedVariable::Callable(c) => unreachable!(),
-            ParsedVariable::Readable(r) => r.clone()
-        }.0.token;
+            ParsedVariable::Readable(r) => r.clone(),
+        }
+        .0
+        .token;
 
         let expression = &assignment.expression;
-        let value = self.eval_expression(expression);
+        let var = self.eval_expression(expression)?;
+        let var = var.lock().unwrap();
+        let value = var.value.clone();
+
+        drop(var);
 
         let id = if let Token::Word(Word::Identifier(id)) = id {
             id
@@ -240,40 +514,77 @@ impl Runtime {
             unreachable!();
         };
 
-        self.scopes.set(id, value).unwrap();
+        self.scopes.set(Variable::new(Some(id.0), value)).unwrap();
+
+        Ok(())
+    }
+
+    #[logfn(Trace)]
+    fn handle_program(&mut self, program: Program) -> RuntimeResult {
+        self.handle_body(&program.body)
+    }
+
+    #[logfn(Trace)]
+    fn handle_body(&mut self, body: &Body) -> RuntimeResult {
+        self.handle_declarations(&body.declarations)?;
+        self.handle_statements(&body.statements)
+    }
+
+    #[logfn(Trace)]
+    fn handle_declarations(&mut self, declarations: &Declarations) -> RuntimeResult {
+        for declaration in &declarations.0 {
+            self.handle_declaration(declaration)?;
+        }
+
+        Ok(Default::default())
+    }
+
+    #[logfn(Trace)]
+    fn handle_declaration(&mut self, declaration: &Declaration) -> RuntimeResult {
+        match declaration {
+            Declaration::Basic(b) => self.handle_basic_declaration(b)?,
+            _ => todo!(),
+        }
+        Ok(Default::default())
+    }
+
+    #[logfn(Trace)]
+    fn handle_basic_declaration(&mut self, declaration: &BasicVarDeclaration) -> RuntimeResult {
+        let BasicVarDeclaration {
+            declaration_type: _,
+            vars,
+        } = declaration;
+
+        for var in &vars.0 {
+            match var {
+                VarDeclaration::Single(s) => self
+                    .scopes
+                    .set(Variable::new(
+                        Some(s.0.token.value()),
+                        Arc::new(Mutex::new(Value::Undefined)),
+                    ))
+                    .expect("Add Error checking for SetError"),
+                VarDeclaration::Array { id, dimensions } => todo!(),
+            }
+        }
+
+        Ok(Default::default())
     }
 }
 
-#[cfg(test)]
-fn to_cursor(input: &str) -> Cursor {
-    let input = input.to_string();
-    let mut lexer = Lexer::new(input.chars().peekable());
-    let lex = lexer.lex().unwrap();
-
-    Cursor::new(lex)
+#[test]
+fn test_runtime() {
+    let _ = env_logger::try_init();
+    let mut runtime = Runtime::default();
 }
 
-#[test]
-fn basic_program() {
-    let _ = env_logger::try_init();
-    let program = r#"integer x, y, z
-    write "hello, world"
-    if (.true.) then
-        write "entering an if statement"
-    endif
-    if (.false.) then
-        write "you can not enter in here"
-    endif
-    write "end of program"
-    "#;
-    info!("Running program {}", program.to_string().blue());
-    let mut cursor = to_cursor(program);
-
-    let program = Program::parse(&mut cursor).unwrap();
-
-    let mut runtime = Runtime::new();
-
-    runtime.eval_program(program);
-
-    runtime.scopes.get("x".into());
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuntimeError {
+    RuntimeError(String, String),
+    VariableAssignmentError(String),
+    TypeError(String),
+    ReferenceError(String),
+    DeclarationError(String, String),
+    LexerError(TokenError),
+    ParseError(ParseError),
 }

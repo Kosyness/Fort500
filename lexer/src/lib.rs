@@ -424,19 +424,22 @@ impl<'chars> Lexer<'chars> {
             _ => {}
         }
 
-        let data = data + self.read_until('.').as_str() + ".";
+        let data = data + self.clone().read_until('.').as_str() + ".";
         self.input.next();
         debug!("Checking for dot value {}", data);
 
         if let Some(bin_op) = BinOp::from_string(data.clone()) {
+            self.read_until('.');
             return Ok(Some(Token::BinOp(bin_op)));
         } else if data == ".true." {
+            self.read_until('.');
             return Ok(Some(Token::Boolean(true)));
         } else if data == ".false." {
+            self.read_until('.');
             return Ok(Some(Token::Boolean(false)));
-        }
+        } 
 
-        Err(TokenError::UnexpectedEOF)
+        Ok(Some(Token::Dot))
     }
 
     #[logfn(Debug)]
